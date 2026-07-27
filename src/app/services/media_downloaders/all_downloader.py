@@ -288,7 +288,7 @@ class AllDownloader:
                                 if not text.startswith("#") and not text.startswith("@"):
                                     title += text + " "
 
-                            music_title += f"{i}. {title.strip()} - {music_text["duration"]}\n\n"
+                            music_title += f"{i}. {title.strip()} - {music_text['duration']}\n\n"
 
 
                 return musics_list, music_title, thumbnail_path
