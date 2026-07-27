@@ -11,6 +11,7 @@ async def create_database_tables(conn: Connection):
         await create_channels_table(conn)
         await create_bots_table(conn)
         await create_table_referrals(conn)
+        await create_favorites_table(conn)
     except Exception as e:
         loger.exception(e)
 
@@ -67,3 +68,16 @@ async def create_table_referrals(conn: Connection) -> None:
 
     await conn.execute(query)
 
+
+async def create_favorites_table(conn: Connection) -> None:
+    query = """
+        CREATE TABLE IF NOT EXISTS favorites (
+            id SERIAL PRIMARY KEY,
+            tg_id BIGINT NOT NULL,
+            file_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            UNIQUE(tg_id, file_id)
+        )
+    """
+    await conn.execute(query)
