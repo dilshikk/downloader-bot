@@ -105,11 +105,7 @@ def audio_keyboard(lang: str, file_id: str = "", title: str = "", is_favorite: b
         keyboard_builder.row(
             InlineKeyboardButton(
                 text=fav_text,
-                callback_data=FavoriteCD(
-                    file_id=file_id,
-                    title=title[:64],
-                    action=fav_action
-                ).pack()
+                callback_data=FavoriteCD(action=fav_action).pack()
             )
         )
 
