@@ -40,3 +40,8 @@ class ReferralCD(CallbackData, prefix="referral"):
 
 class AddMandatorySubscriptionCD(CallbackData, prefix="mandatory_subscription"):
     actions: AddMandatorySubscriptionActions
+
+class FavoriteCD(CallbackData, prefix="favorite"):
+    file_id: str
+    title: str
+    action: str  # "add" or "remove"
