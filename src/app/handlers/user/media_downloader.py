@@ -652,12 +652,28 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
         )
 
         if music_path and await asyncio.to_thread(os.path.exists, music_path):
-            await call.message.reply_audio(
+            sent = await call.message.reply_audio(
                 audio=FSInputFile(music_path),
                 title=title,
                 caption=_("Downloaded by"),
-                reply_markup=audio_keyboard(lang)
+                reply_markup=audio_keyboard(
+                    lang,
+                    file_id="placeholder",  # will be updated after send
+                    title=title or "",
+                    is_favorite=False
+                )
             )
+            # Update keyboard with real file_id after upload
+            real_file_id = sent.audio.file_id if sent and sent.audio else ""
+            if real_file_id:
+                await sent.edit_reply_markup(
+                    reply_markup=audio_keyboard(
+                        lang,
+                        file_id=real_file_id,
+                        title=title or "",
+                        is_favorite=False
+                    )
+                )
     except Exception as e:
         print("ERROR in send_music_search_results:", e)
         await call.message.answer(text=_("Error in loading music"))
@@ -736,11 +752,21 @@ async def send_video_mp3_audio_version(call: CallbackQuery, lang: str, bot: Bot)
         audio_path = await downloader_audio.extract_video_to_audio(video_path)
 
         if audio_path and await asyncio.to_thread(os.path.exists, audio_path):
-            await call.message.answer_audio(
+            sent = await call.message.answer_audio(
                 FSInputFile(audio_path),
                 caption=_("Downloaded by"),
                 title="mp3"
             )
+            real_file_id = sent.audio.file_id if sent and sent.audio else ""
+            if real_file_id:
+                await sent.edit_reply_markup(
+                    reply_markup=audio_keyboard(
+                        lang,
+                        file_id=real_file_id,
+                        title="mp3",
+                        is_favorite=False
+                    )
+                )
 
     except Exception as e:
         print("ERROR in send_video_mp3_audio_version:", e)
