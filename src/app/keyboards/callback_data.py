@@ -41,7 +41,6 @@ class ReferralCD(CallbackData, prefix="referral"):
 class AddMandatorySubscriptionCD(CallbackData, prefix="mandatory_subscription"):
     actions: AddMandatorySubscriptionActions
 
-class FavoriteCD(CallbackData, prefix="favorite"):
-    file_id: str
-    title: str
+# Only action stored — file_id and title are read from call.message.audio at runtime
+class FavoriteCD(CallbackData, prefix="fav"):
     action: str  # "add" or "remove"
