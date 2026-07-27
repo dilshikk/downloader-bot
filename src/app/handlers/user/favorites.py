@@ -15,20 +15,24 @@ async def handle_favorite(call: CallbackQuery, callback_data: FavoriteCD, lang: 
     _ = get_translator(lang).gettext
     db = FavoritesDataBaseActions(pool)
     tg_id = call.from_user.id
-    file_id = callback_data.file_id
-    title = callback_data.title
+
+    # Read file_id and title directly from the audio message
+    if not call.message.audio:
+        await call.answer(_("Error"))
+        return
+
+    file_id = call.message.audio.file_id
+    title = call.message.audio.title or ""
 
     if callback_data.action == "add":
         await db.add_favorite(tg_id, file_id, title)
         await call.answer(_("Added to favorites") + " ❤️")
-        # Update keyboard to show remove button
         await call.message.edit_reply_markup(
             reply_markup=audio_keyboard(lang, file_id=file_id, title=title, is_favorite=True)
         )
     elif callback_data.action == "remove":
         await db.remove_favorite(tg_id, file_id)
         await call.answer(_("Removed from favorites") + " 🤍")
-        # Update keyboard to show add button
         await call.message.edit_reply_markup(
             reply_markup=audio_keyboard(lang, file_id=file_id, title=title, is_favorite=False)
         )
