@@ -33,9 +33,13 @@ media_downloader_router = Router()
 _music_downloader = MusicDownloader()
 
 
-def _prefetch_top(music_list: list, n: int = 2) -> None:
-    """Start background download for the top-N tracks after showing search results."""
-    for track in music_list[:n]:
+def _prefetch_all(music_list: list) -> None:
+    """
+    Start background download for ALL tracks in the search results list.
+    Since the user spends a few seconds reading the list before clicking,
+    most tracks will already be ready by the time they choose one.
+    """
+    for track in music_list:
         video_id = track.get("video_id") or track.get("id") or track.get("videoId")
         if video_id:
             _music_downloader.prefetch(video_id)
@@ -462,8 +466,9 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                     else:
                         await message.reply(text=music_title, reply_markup=music_keyboards(music_list))
 
-                    # Prefetch top-2 tracks in background so they are ready when user clicks
-                    _prefetch_top(music_list)
+                    # Prefetch ALL tracks in background — user reads the list for a few seconds
+                    # so by the time they tap, the file is already on disk
+                    _prefetch_all(music_list)
 
         elif message.video or message.video_note or message.audio or message.voice:
             loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
@@ -494,8 +499,8 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                     else:
                         await message.reply(text=music_title, reply_markup=music_keyboards(music_list))
 
-                    # Prefetch top-2 tracks in background
-                    _prefetch_top(music_list)
+                    # Prefetch ALL tracks in background
+                    _prefetch_all(music_list)
 
     except Exception as e:
         print(f"ERROR: {e}")
@@ -534,8 +539,7 @@ async def send_music_results_from_video(call: CallbackQuery, lang: str):
             else:
                 await call.message.reply(text=music_title, reply_markup=music_keyboards(musics_list))
 
-            # Prefetch top-2 tracks in background
-            _prefetch_top(musics_list)
+            _prefetch_all(musics_list)
         else:
             await call.message.answer(_("Error in loading music"))
     except Exception as e:
@@ -558,7 +562,7 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
     """
     _ = get_translator(lang).gettext
     video_id = callback_data.video_id
-    track_title = callback_data.title or video_id  # used for DRM fallback
+    track_title = callback_data.title or video_id
 
     # ── Layer 1: Redis file_id cache ─────────────────────────────────
     cached_fid = await get_cached_audio_file_id(video_id, settings)
@@ -587,7 +591,6 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
             # ── Layer 3: fresh download (with DRM fallback) ──────────
             result = await _music_downloader.download_music_from_youtube(video_id)
             if not result:
-                # DRM or error — search by title, skip the known bad video_id
                 print(f"DRM fallback for video_id={video_id!r}, title={track_title!r}")
                 result = await _music_downloader.download_music_by_query(
                     track_title, skip_ids=[video_id]
@@ -642,8 +645,7 @@ async def send_music_by_name(call: CallbackQuery, lang: str, callback_data: TopP
             else:
                 await call.message.reply(text=music_title, reply_markup=music_keyboards(music_list))
 
-            # Prefetch top-2 tracks in background
-            _prefetch_top(music_list)
+            _prefetch_all(music_list)
 
     except Exception as e:
         print("ERROR in send_music_by_name:", e)
@@ -664,7 +666,6 @@ async def send_video_mp3_audio_version(call: CallbackQuery, lang: str, bot: Bot)
     audio_path = None
 
     try:
-        # Use bot.download() — routes through http://127.0.0.1:8081, no 20 MB cap
         await bot.download(file=call.message.video.file_id, destination=video_path)
 
         audio_path = await downloader_audio.extract_video_to_audio(video_path)
