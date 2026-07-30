@@ -1,11 +1,29 @@
 import asyncio
 import os
+import shutil
 from typing import Optional
 
 from shazamio import Shazam
 from yt_dlp import YoutubeDL
 
 from src.app.services.media_downloaders.utils.files import get_audio_file_name
+
+# Use aria2c as external downloader if available — opens 16 parallel connections
+# Install on VPS: apt install aria2 -y
+_ARIA2C_AVAILABLE = shutil.which("aria2c") is not None
+
+_ARIA2C_OPTS = {
+    "external_downloader": "aria2c",
+    "external_downloader_args": {
+        "aria2c": [
+            "--max-connection-per-server=16",
+            "--split=16",
+            "--min-split-size=1M",
+            "--max-concurrent-downloads=1",
+            "--quiet=true",
+        ]
+    },
+}
 
 
 class MusicDownloader:
@@ -28,21 +46,26 @@ class MusicDownloader:
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         music_output_path = f"./media/audios/{get_audio_file_name()}"
 
-        yt_dlp_opts = {
-            # Prefer m4a (single file, no merge needed) → faster than webm which needs muxing
+        yt_dlp_opts: dict = {
+            # Prefer m4a (single file, no merge needed)
             "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
             "outtmpl": music_output_path + ".%(ext)s",
             "quiet": True,
             "no_warnings": True,
             "socket_timeout": 15,
-            # Download up to 5 fragments in parallel — biggest speed boost for DASH streams
-            "concurrent_fragment_downloads": 5,
-            # Skip writing thumbnails, descriptions, subtitles — saves time
+            # Skip writing thumbnails, descriptions, subtitles
             "writethumbnail": False,
             "writesubtitles": False,
             "writeautomaticsub": False,
             # No postprocessors — skip FFmpeg re-encoding entirely
         }
+
+        if _ARIA2C_AVAILABLE:
+            # aria2c: 16 parallel connections — fastest option on VPS
+            yt_dlp_opts.update(_ARIA2C_OPTS)
+        else:
+            # Fallback: yt-dlp built-in parallel fragment downloads
+            yt_dlp_opts["concurrent_fragment_downloads"] = 5
 
         def download_sync():
             with YoutubeDL(yt_dlp_opts) as ydl:
