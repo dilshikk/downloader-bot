@@ -22,13 +22,6 @@ from src.app.utils.enums.video import InstagramMediaType
 from src.app.utils.i18n import get_translator
 
 
-def _safe_minutes(duration) -> int:
-    try:
-        return int(str(duration).split(":")[0])
-    except Exception:
-        return 0
-
-
 def _clean_title(title: str) -> str:
     return " ".join(w for w in str(title).split() if not w.startswith("#") and not w.startswith("@"))
 
@@ -101,13 +94,12 @@ class AllDownloader:
     async def _download_with_drm_fallback(
         self, video_id: str, title: str
     ) -> Optional[tuple[str, str]]:
-        """Try video_id first. On DRM → fallback to yt-dlp ytsearch by title."""
+        """Try video_id first. On DRM/error -> fallback to ytsearch by title."""
         result = await self.music_downloader.download_music_from_youtube(video_id)
         if result:
             return result
-        # DRM or error — try by title query (yt-dlp picks non-DRM result)
         print(f"Falling back to title search for: {title!r}")
-        return await self.music_downloader.download_music_by_query(title)
+        return await self.music_downloader.download_music_by_query(title, skip_ids=[video_id])
 
     async def music_downloaders(
         self,
@@ -127,7 +119,7 @@ class AllDownloader:
                     await self.message.answer(self._("Music not found"))
                     return [], "", None
 
-                # Thumbnail from first entry
+                # Thumbnail from first raw entry
                 for entry in (entries or []):
                     thumb = (
                         entry.get("thumbnail")
@@ -139,35 +131,35 @@ class AllDownloader:
                         )
                     break
 
+                # Filter and cap at 10 — scoring already sorted by quality
                 musics_list = []
-                music_title = ""
-                idx = 1
                 for music_data in musics_data:
-                    title = music_data.get("title")
-                    if not title:
+                    if not music_data.get("title"):
                         continue
-                    duration = music_data.get("duration") or "0:00"
-                    # Skip very long tracks (>10 min)
-                    if _safe_minutes(duration) >= 10:
+                    dur_sec = music_data.get("duration_sec") or 0
+                    if dur_sec and dur_sec > 600:
                         continue
                     musics_list.append(music_data)
-                    music_title += f"{idx}. {_clean_title(title)} - {duration}\n\n"
-                    idx += 1
+                    if len(musics_list) >= 10:
+                        break
 
                 if not musics_list:
                     await self.message.answer(self._("Music not found"))
                     return [], "", None
 
+                # Caption is now minimal — buttons show full track info
+                q = (some_data or "").strip()
+                display_q = q if len(q) <= 40 else q[:37] + "..."
+                music_title = f"<b>{display_q}</b> — {len(musics_list)} ta natija"
                 return musics_list, music_title, thumbnail_path
 
             # ── DOWNLOAD ──────────────────────────────────────────────────────
             if actions == MusicAction.DOWNLOAD:
-                # some_data may be a single video_id or "video_id|||title" pair
                 if "|||" in str(some_data):
                     video_id, track_title = some_data.split("|||", 1)
                 else:
                     video_id = some_data
-                    track_title = some_data  # use as search query if DRM
+                    track_title = some_data
 
                 result = await self._download_with_drm_fallback(video_id, track_title)
                 if not result:
@@ -195,7 +187,6 @@ class AllDownloader:
                     media_file_id = self.message.voice.file_id
                     media_path = f"./media/audios/{get_audio_file_name()}"
 
-                # Uses local Bot API server (127.0.0.1:8081) — no hardcoded api.telegram.org
                 await self.message.bot.download(file=media_file_id, destination=media_path)
 
                 if media_type in [MediaType.VOICE, MediaType.VIDEO_NOTE]:
@@ -223,24 +214,18 @@ class AllDownloader:
                     if not musics_data:
                         await self.message.answer(self._("Music not found"))
 
-                    musics_list = []
-                    music_title = ""
-                    for i, md in enumerate(musics_data or [], start=1):
-                        t = md.get("title")
-                        if not t:
-                            continue
-                        dur = md.get("duration") or "0:00"
-                        if _safe_minutes(dur) < 10:
-                            musics_list.append(md)
-                            music_title += f"{i}. {_clean_title(t)} - {dur}\n\n"
+                    musics_list = [md for md in (musics_data or []) if md.get("title") and (not md.get("duration_sec") or md["duration_sec"] <= 600)]
 
                     for f in [audio_path, media_path]:
                         if f and await asyncio.to_thread(os.path.exists, f):
                             await asyncio.to_thread(os.remove, f)
 
+                    q = (music_texts or "").strip()
+                    display_q = q if len(q) <= 40 else q[:37] + "..."
+                    music_title = f"<b>{display_q}</b> — {len(musics_list)} ta natija"
                     return musics_list, music_title, thumbnail_path
 
-                # Audio / Video → Shazam
+                # Audio / Video -> Shazam recognition
                 music_name = await self.music_downloader.find_song_name_by_video_audio_voice_video_note(media_path)
                 if not music_name:
                     await self.message.answer(self._("Music not found"))
@@ -262,17 +247,11 @@ class AllDownloader:
                 if media_path and await asyncio.to_thread(os.path.exists, media_path):
                     await asyncio.to_thread(os.remove, media_path)
 
-                musics_list = []
-                music_title = ""
-                for i, md in enumerate(musics_data or [], start=1):
-                    t = md.get("title")
-                    if not t:
-                        continue
-                    dur = md.get("duration") or "0:00"
-                    if _safe_minutes(dur) <= 10:
-                        musics_list.append(md)
-                        music_title += f"{i}. {_clean_title(t)} - {dur}\n\n"
+                musics_list = [md for md in (musics_data or []) if md.get("title") and (not md.get("duration_sec") or md["duration_sec"] <= 600)]
 
+                q = music_name.strip()
+                display_q = q if len(q) <= 40 else q[:37] + "..."
+                music_title = f"<b>{display_q}</b> — {len(musics_list)} ta natija"
                 return musics_list, music_title, thumbnail_path
 
         except Exception as e:
