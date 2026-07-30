@@ -2,8 +2,6 @@ import asyncio
 import os.path
 from typing import Optional, Union
 
-import aiofiles
-import aiohttp
 from aiogram.types import Message
 
 from src.app.services.media_downloaders.audio_and_music_downloaders.music_downloader import MusicDownloader
@@ -22,6 +20,18 @@ from src.app.utils.enums.video import InstagramMediaType
 from src.app.utils.i18n import get_translator
 
 
+def _safe_minutes(duration) -> int:
+    """Parse 'M:SS' or None → minutes int, never raises."""
+    try:
+        return int(str(duration).split(":")[0])
+    except Exception:
+        return 0
+
+
+def _clean_title(title: str) -> str:
+    return " ".join(w for w in title.split() if not w.startswith("#") and not w.startswith("@"))
+
+
 class AllDownloader:
     def __init__(self, message: Message = None, lang: str = None):
         self.message = message
@@ -38,16 +48,12 @@ class AllDownloader:
     async def instagram_downloaders(
         self,
         url: str,
-        media_type: InstagramMediaType
+        media_type: InstagramMediaType,
     ) -> Optional[Union[str, list[dict]]]:
-
         errors = []
         file_path = None
 
-        parsing_types = [
-            InstagramMediaType.HIGHLIGHT,
-            InstagramMediaType.STORIES
-        ]
+        parsing_types = [InstagramMediaType.HIGHLIGHT, InstagramMediaType.STORIES]
 
         if media_type in parsing_types:
             file_path = await self.instagram_downloader.get_instagram_links_async(url)
@@ -60,241 +66,207 @@ class AllDownloader:
 
         if DownloadError.FILE_TOO_BIG in errors:
             if self.message:
-                await self.message.answer(self._('File size bigger than 2GB'))
+                await self.message.answer(self._("File size bigger than 2GB"))
             return None
 
         if not file_path or DownloadError.DOWNLOAD_ERROR in errors:
             if self.message:
-                await self.message.answer(self._('Error in loading file'))
+                await self.message.answer(self._("Error in loading file"))
             return None
         return file_path
 
     async def youtube_downloaders(self, url: str):
         file_path, errors = await self.youtube_downloader.youtube_video_and_shorts_downloader(url)
-
         if DownloadError.FILE_TOO_BIG in errors:
-            await self.message.answer(self._('File size big to 2 gb'))
+            await self.message.answer(self._("File size big to 2 gb"))
         elif DownloadError.DOWNLOAD_ERROR in errors:
-            await self.message.answer(self._('Error in loading file'))
-
+            await self.message.answer(self._("Error in loading file"))
         return file_path
 
     async def tiktok_downloaders(self, url: str):
         file_path, errors = await self.tiktok_downloader.tiktok_video_downloader(url)
-
         if DownloadError.FILE_TOO_BIG in errors:
-            await self.message.answer(self._('File size big to 2 gb'))
+            await self.message.answer(self._("File size big to 2 gb"))
         elif DownloadError.DOWNLOAD_ERROR in errors:
-            await self.message.answer(self._('Error in loading file'))
-
+            await self.message.answer(self._("Error in loading file"))
         return file_path
 
     async def vk_downloaders(self, url: str):
         file_path, errors = await self.vk_downloader.vk_video_downloader(url)
-
         if DownloadError.FILE_TOO_BIG in errors:
-            await self.message.answer(self._('File size big to 2 gb'))
+            await self.message.answer(self._("File size big to 2 gb"))
         elif DownloadError.DOWNLOAD_ERROR in errors:
-            await self.message.answer(self._('Error in loading file'))
-
+            await self.message.answer(self._("Error in loading file"))
         return file_path
 
     async def music_downloaders(
         self,
         actions: MusicAction,
         media_type: MediaType = None,
-        some_data: str = None
+        some_data: str = None,
     ):
-
         media_file_id = None
         media_path = None
         thumbnail_path = None
-        try:
 
+        try:
+            # ── SEARCH BY TEXT ────────────────────────────────────────
             if actions == MusicAction.SEARCH_BY_TEXT:
                 musics_data, entries, errors = await self.search.search_music(some_data, 10)
 
-                # No thumbnail download for text search — saves ~1-2s HTTP round-trip
-                thumbnail_path = None
-
                 if DownloadError.MUSIC_NOT_FOUND in errors:
-                    await self.message.answer(self._('Music not found'))
+                    await self.message.answer(self._("Music not found"))
+                    return [], "", None
 
                 musics_list = []
-                music_title = ''
+                music_title = ""
+                real_index = 1
 
-                if musics_data:
-                    real_index = 1
+                for music_data in (musics_data or []):
+                    title = music_data.get("title")
+                    duration = music_data.get("duration")
 
-                    for music_data in musics_data:
+                    if not title:
+                        continue
 
-                        title = music_data.get('title')
-                        duration = music_data.get('duration')
+                    minutes = _safe_minutes(duration)
+                    if minutes >= 10:
+                        continue
 
-                        if not title or not duration:
-                            continue
+                    musics_list.append(music_data)
+                    music_title += f"{real_index}. {_clean_title(title)} - {duration or '?'}\n\n"
+                    real_index += 1
 
-                        try:
-                            minutes = int(str(duration).split(':')[0])
-                        except Exception as e:
-                            print(f'ERROR: {e}')
-                            continue
-
-                        if minutes < 10:
-                            musics_list.append(music_data)
-
-                            clean_title = ' '.join([
-                                w for w in title.split()
-                                if not w.startswith('#') and not w.startswith('@')
-                            ])
-
-                            music_title += f'{real_index}. {clean_title} - {duration}\n\n'
-                            real_index += 1
+                # Thumbnail from first entry
+                for entry in (entries or []):
+                    thumb = entry.get("thumbnail") or entry.get("thumbnails", [{}])[0].get("url", "")
+                    if thumb:
+                        thumbnail_path = await download_media_in_internet(
+                            thumb, get_photo_file_name(), MediaType.PHOTO
+                        )
+                    break
 
                 return musics_list, music_title, thumbnail_path
 
+            # ── DOWNLOAD ──────────────────────────────────────────────
             if actions == MusicAction.DOWNLOAD:
-                music_output_path, title = await self.music_downloader.download_music_from_youtube(some_data)
-
-                if not music_output_path and not await asyncio.to_thread(os.path.exists, music_output_path):
-                    await self.message.answer(self._('Error in loading music'))
-                    return
+                result = await self.music_downloader.download_music_from_youtube(some_data)
+                if not result:
+                    await self.message.answer(self._("Error in loading music"))
+                    return None
+                music_output_path, title = result
+                if not music_output_path or not await asyncio.to_thread(os.path.exists, music_output_path):
+                    await self.message.answer(self._("Error in loading music"))
+                    return None
                 return music_output_path, title
 
+            # ── SEARCH BY MEDIA ───────────────────────────────────────
             if actions == MusicAction.SEARCH_BY_MEDIA:
-
                 if media_type == MediaType.VIDEO:
                     media_file_id = self.message.video.file_id
+                    media_path = f"./media/videos/{get_video_file_name()}"
                 elif media_type == MediaType.VIDEO_NOTE:
                     media_file_id = self.message.video_note.file_id
+                    media_path = f"./media/videos/{get_video_file_name()}"
                 elif media_type == MediaType.AUDIO:
                     media_file_id = self.message.audio.file_id
+                    media_path = f"./media/audios/{get_audio_file_name()}"
                 elif media_type == MediaType.VOICE:
                     media_file_id = self.message.voice.file_id
+                    media_path = f"./media/audios/{get_audio_file_name()}"
 
-                if media_type == MediaType.VIDEO:
-                    media_path = f'./media/videos/{get_video_file_name()}'
-                elif media_type == MediaType.VIDEO_NOTE:
-                    media_path = f'./media/videos/{get_video_file_name()}'
-                elif media_type == MediaType.AUDIO:
-                    media_path = f'./media/audios/{get_audio_file_name()}'
-                elif media_type == MediaType.VOICE:
-                    media_path = f'./media/audios/{get_audio_file_name()}'
-
-                # Use bot.download() — routes through the configured API server
-                # (http://127.0.0.1:8081), no hardcoded URLs, no 20 MB cap.
+                # bot.download() routes through the local Bot API server (http://127.0.0.1:8081)
                 await self.message.bot.download(file=media_file_id, destination=media_path)
 
                 if media_type in [MediaType.VOICE, MediaType.VIDEO_NOTE]:
                     audio_path = None
-                    if MediaType.VIDEO_NOTE:
-                        audio_path = f'./media/audios/{get_audio_file_name()}'
+                    if media_type == MediaType.VIDEO_NOTE:
+                        audio_path = f"./media/audios/{get_audio_file_name()}"
                         await asyncio.to_thread(
-                            self.audio_utils.extract_audio_from_video,
-                            media_path,
-                            audio_path
+                            self.audio_utils.extract_audio_from_video, media_path, audio_path
                         )
 
                     music_texts = await asyncio.to_thread(
-                        self.audio_utils.speech_to_text,
-                        media_path or audio_path,
-                        some_data
+                        self.audio_utils.speech_to_text, media_path or audio_path, some_data
                     )
-                    print(music_texts)
 
                     musics_data, entries, errors = await self.search.search_music(music_texts, 10)
 
-                    for entry in entries:
-                        thumbnail_path = await download_media_in_internet(
-                            entry.get('thumbnail', ''),
-                            get_photo_file_name(),
-                            MediaType.PHOTO
-                        )
+                    for entry in (entries or []):
+                        thumb = entry.get("thumbnail") or ""
+                        if thumb:
+                            thumbnail_path = await download_media_in_internet(
+                                thumb, get_photo_file_name(), MediaType.PHOTO
+                            )
                         break
 
                     if DownloadError.MUSIC_NOT_FOUND in errors:
-                        await self.message.answer(self._('Music not found'))
+                        await self.message.answer(self._("Music not found"))
 
                     musics_list = []
-                    music_title = ''
+                    music_title = ""
 
-                    if musics_data:
-                        for i, music_data in enumerate(musics_data, start=1):
-                            if music_data.get('title'):
-                                file_size = music_data.get('filesize_mb') or 0
-                                duration = music_data.get('duration') or '0:00'
+                    for i, music_data in enumerate(musics_data or [], start=1):
+                        title = music_data.get("title")
+                        if not title:
+                            continue
+                        duration = music_data.get("duration") or "0:00"
+                        if _safe_minutes(duration) < 10:
+                            musics_list.append(music_data)
+                            music_title += f"{i}. {_clean_title(title)} - {duration}\n\n"
 
-                                try:
-                                    duration_minutes = int(duration.split(':')[0])
-                                except (ValueError, AttributeError):
-                                    duration_minutes = 0
-
-                                try:
-                                    file_size = int(file_size)
-                                except (ValueError, TypeError):
-                                    file_size = 0
-
-                                if file_size < 2000 and duration_minutes < 10:
-                                    musics_list.append(music_data)
-                                    title = ''
-
-                                    for text in str(music_data.get('title')).split(' '):
-                                        if not text.startswith('#') and not text.startswith('@'):
-                                            title += text + ' '
-
-                                    music_title += f'{i}. {title.strip()} - {duration}\n\n'
-                        for file in [audio_path, media_path]:
-                            if await asyncio.to_thread(os.path.exists, file):
-                                await asyncio.to_thread(os.remove, file)
+                    for file in [audio_path, media_path]:
+                        if file and await asyncio.to_thread(os.path.exists, file):
+                            await asyncio.to_thread(os.remove, file)
 
                     return musics_list, music_title, thumbnail_path
 
+                # Audio / Video → Shazam recognize
                 music_name = await self.music_downloader.find_song_name_by_video_audio_voice_video_note(media_path)
 
                 if not music_name:
-                    await self.message.answer(self._('Music not found'))
+                    await self.message.answer(self._("Music not found"))
+                    return [], "", None
 
                 musics_data, entries, errors = await self.search.search_music(music_name, 10)
 
-                for entry in entries:
-                    thumbnail_path = await download_media_in_internet(
-                        entry.get('thumbnail', ''),
-                        get_photo_file_name(),
-                        MediaType.PHOTO
-                    )
+                for entry in (entries or []):
+                    thumb = entry.get("thumbnail") or ""
+                    if thumb:
+                        thumbnail_path = await download_media_in_internet(
+                            thumb, get_photo_file_name(), MediaType.PHOTO
+                        )
                     break
 
                 if DownloadError.MUSIC_NOT_FOUND in errors:
-                    await self.message.answer(self._('Music not found'))
+                    await self.message.answer(self._("Music not found"))
 
-                if await asyncio.to_thread(os.path.exists, media_path):
+                if media_path and await asyncio.to_thread(os.path.exists, media_path):
                     await asyncio.to_thread(os.remove, media_path)
 
                 musics_list = []
-                music_title = ''
+                music_title = ""
 
-                if musics_data:
-                    for i, music_text in enumerate(musics_data, start=1):
-                        if int(str(music_text['duration']).split(':')[0]) <= 10:
-                            musics_list.append(music_text)
-                            title = ''
-                            for text in str(music_text['title']).split(' '):
-                                if not text.startswith('#') and not text.startswith('@'):
-                                    title += text + ' '
-
-                            music_title += f'{i}. {title.strip()} - {music_text["duration"]}\n\n'
+                for i, music_data in enumerate(musics_data or [], start=1):
+                    title = music_data.get("title")
+                    if not title:
+                        continue
+                    duration = music_data.get("duration") or "0:00"
+                    if _safe_minutes(duration) <= 10:
+                        musics_list.append(music_data)
+                        music_title += f"{i}. {_clean_title(title)} - {duration}\n\n"
 
                 return musics_list, music_title, thumbnail_path
 
         except Exception as e:
-            print('ERROR', e)
+            print("ERROR", e)
             return None, None, None
 
     async def extract_video_to_audio(self, video_path: str):
-        audio_path_file = f'./media/audios/{get_audio_file_name()}.mp3'
-
-        audio_path = await asyncio.to_thread(self.audio_utils.extract_audio_from_video, video_path, audio_path_file)
+        audio_path_file = f"./media/audios/{get_audio_file_name()}.mp3"
+        audio_path = await asyncio.to_thread(
+            self.audio_utils.extract_audio_from_video, video_path, audio_path_file
+        )
         if audio_path:
             return audio_path_file
-
         return None
