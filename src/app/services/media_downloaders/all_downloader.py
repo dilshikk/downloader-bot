@@ -34,9 +34,9 @@ class AllDownloader:
         self._ = get_translator(lang).gettext
 
     async def instagram_downloaders(
-            self,
-            url: str,
-            media_type: InstagramMediaType
+        self,
+        url: str,
+        media_type: InstagramMediaType
     ) -> Optional[Union[str, list[dict]]]:
 
         errors = []
@@ -88,10 +88,10 @@ class AllDownloader:
         return file_path
 
     async def music_downloaders(
-            self,
-            actions: MusicAction,
-            media_type: MediaType = None,
-            some_data: str = None
+        self,
+        actions: MusicAction,
+        media_type: MediaType = None,
+        some_data: str = None
     ):
 
         media_file_id = None
@@ -105,48 +105,45 @@ class AllDownloader:
                 thumbnail_path = None
                 if entries:
                     for entry in entries:
-                        thumbnail_path = await download_media_in_internet(
-                            entry.get("thumbnail", ""),
-                            get_photo_file_name(),
-                            MediaType.PHOTO
-                        )
+                        thumbnail_url = entry.get("thumbnail") or entry.get("thumbnails", [{}])[0].get("url", "") if isinstance(entry.get("thumbnails"), list) else ""
+                        if thumbnail_url:
+                            thumbnail_path = await download_media_in_internet(
+                                thumbnail_url,
+                                get_photo_file_name(),
+                                MediaType.PHOTO
+                            )
                         break
 
-                if DownloadError.MUSIC_NOT_FOUND in errors:
+                if DownloadError.MUSIC_NOT_FOUND in errors or not musics_data:
                     await self.message.answer(self._("Music not found"))
+                    return None, None, None
 
                 musics_list = []
                 music_title = ""
+                real_index = 1
 
-                if musics_data:
-                    real_index = 1
+                for music_data in musics_data:
+                    title = music_data.get("title") or ""
+                    duration = music_data.get("duration")
 
-                    for music_data in musics_data:
+                    # Duration filter: skip tracks > 10 minutes
+                    # (filesize_mb may be None when using extract_flat, that's OK)
+                    try:
+                        minutes = int(str(duration).split(":")[0]) if duration else 0
+                    except Exception:
+                        minutes = 0
 
-                        title = music_data.get("title")
-                        file_size = music_data.get("filesize_mb")
-                        duration = music_data.get("duration")
+                    if minutes >= 10:
+                        continue
 
-                        if not file_size:
-                            continue
+                    musics_list.append(music_data)
 
-                        try:
-                            minutes = int(str(duration).split(":")[0])
-                        except Exception as e:
-                            print(f"ERROR: {e}")
-                            continue
-
-                        # Filter
-                        if file_size < 2000 and minutes < 10:
-                            musics_list.append(music_data)
-
-                            clean_title = " ".join([
-                                w for w in title.split()
-                                if not w.startswith("#") and not w.startswith("@")
-                            ])
-
-                            music_title += f"{real_index}. {clean_title} - {duration}\n\n"
-                            real_index += 1
+                    clean_title = " ".join(
+                        w for w in title.split()
+                        if not w.startswith("#") and not w.startswith("@")
+                    )
+                    music_title += f"{real_index}. {clean_title} - {duration}\n\n"
+                    real_index += 1
 
                 return musics_list, music_title, thumbnail_path
 
@@ -183,7 +180,7 @@ class AllDownloader:
                     url = f"https://api.telegram.org/bot{self.message.bot.token}/getFile?file_id={file_info.file_id}"
                     async with session.get(url) as resp:
                         file_info = await resp.json()
-                        file_path = file_info['result']['file_path']
+                    file_path = file_info['result']['file_path']
 
                     file_url = f"https://api.telegram.org/file/bot{self.message.bot.token}/{file_path}"
                     async with session.get(file_url) as response:
@@ -195,11 +192,11 @@ class AllDownloader:
                     audio_path = None
                     if MediaType.VIDEO_NOTE:
                         audio_path = f"./media/audios/{get_audio_file_name()}"
-                        await asyncio.to_thread(
-                            self.audio_utils.extract_audio_from_video,
-                            media_path,
-                            audio_path
-                        )
+                    await asyncio.to_thread(
+                        self.audio_utils.extract_audio_from_video,
+                        media_path,
+                        audio_path
+                    )
 
                     music_texts = await asyncio.to_thread(
                         self.audio_utils.speech_to_text,
@@ -227,7 +224,6 @@ class AllDownloader:
                     if musics_data:
                         for i, music_data in enumerate(musics_data, start=1):
                             if music_data.get("title"):
-                                file_size = music_data.get("filesize_mb") or 0
                                 duration = music_data.get("duration") or "0:00"
 
                                 try:
@@ -235,22 +231,16 @@ class AllDownloader:
                                 except (ValueError, AttributeError):
                                     duration_minutes = 0
 
-                                try:
-                                    file_size = int(file_size)
-                                except (ValueError, TypeError):
-                                    file_size = 0
-
-                                if file_size < 2000 and duration_minutes < 10:
+                                if duration_minutes < 10:
                                     musics_list.append(music_data)
-                                    title = ""
+                                    title = " ".join(
+                                        t for t in str(music_data.get("title")).split()
+                                        if not t.startswith("#") and not t.startswith("@")
+                                    )
+                                    music_title += f"{i}. {title} - {duration}\n\n"
 
-                                    for text in str(music_data.get("title")).split(" "):
-                                        if not text.startswith("#") and not text.startswith("@"):
-                                            title += text + " "
-
-                                    music_title += f"{i}. {title.strip()} - {duration}\n\n"
                     for file in [audio_path, media_path]:
-                        if await asyncio.to_thread(os.path.exists, file):
+                        if file and await asyncio.to_thread(os.path.exists, file):
                             await asyncio.to_thread(os.remove, file)
 
                     return musics_list, music_title, thumbnail_path
@@ -273,7 +263,7 @@ class AllDownloader:
                 if DownloadError.MUSIC_NOT_FOUND in errors:
                     await self.message.answer(self._("Music not found"))
 
-                if await asyncio.to_thread(os.path.exists, media_path):
+                if media_path and await asyncio.to_thread(os.path.exists, media_path):
                     await asyncio.to_thread(os.remove, media_path)
 
                 musics_list = []
@@ -281,18 +271,21 @@ class AllDownloader:
 
                 if musics_data:
                     for i, music_text in enumerate(musics_data, start=1):
-                        if int(str(music_text["duration"]).split(":")[0]) <= 10:
+                        duration = music_text.get("duration") or "0:00"
+                        try:
+                            dur_minutes = int(str(duration).split(":")[0])
+                        except (ValueError, AttributeError):
+                            dur_minutes = 0
+
+                        if dur_minutes <= 10:
                             musics_list.append(music_text)
-                            title = ""
-                            for text in str(music_text["title"]).split(" "):
-                                if not text.startswith("#") and not text.startswith("@"):
-                                    title += text + " "
-
-                            music_title += f"{i}. {title.strip()} - {music_text['duration']}\n\n"
-
+                            title = " ".join(
+                                t for t in str(music_text.get("title", "")).split()
+                                if not t.startswith("#") and not t.startswith("@")
+                            )
+                            music_title += f"{i}. {title} - {duration}\n\n"
 
                 return musics_list, music_title, thumbnail_path
-
 
         except Exception as e:
             print("ERROR", e)
