@@ -13,6 +13,7 @@ from src.app.services.media_downloaders.utils.downlaod_media import download_med
 from src.app.services.media_downloaders.utils.files import get_video_file_name, get_audio_file_name, get_photo_file_name
 from src.app.services.media_downloaders.video_downloaders.instagram_downloader import InstagramDownloader
 from src.app.services.media_downloaders.video_downloaders.tiktok_downloader import TikTokDownloader
+from src.app.services.media_downloaders.video_downloaders.vk_downloader import VKDownloader
 from src.app.services.media_downloaders.video_downloaders.youtube_downloader import YouTubeDownloader
 from src.app.utils.enums.audio import MusicAction
 from src.app.utils.enums.error import DownloadError
@@ -28,6 +29,7 @@ class AllDownloader:
         self.instagram_downloader = InstagramDownloader()
         self.youtube_downloader = YouTubeDownloader()
         self.tiktok_downloader = TikTokDownloader()
+        self.vk_downloader = VKDownloader()
         self.music_downloader = MusicDownloader()
         self.search = YouTubeSearcher()
         self.audio_utils = AudioUtils()
@@ -79,6 +81,16 @@ class AllDownloader:
 
     async def tiktok_downloaders(self, url: str):
         file_path, errors = await self.tiktok_downloader.tiktok_video_downloader(url)
+
+        if DownloadError.FILE_TOO_BIG in errors:
+            await self.message.answer(self._('File size big to 2 gb'))
+        elif DownloadError.DOWNLOAD_ERROR in errors:
+            await self.message.answer(self._('Error in loading file'))
+
+        return file_path
+
+    async def vk_downloaders(self, url: str):
+        file_path, errors = await self.vk_downloader.vk_video_downloader(url)
 
         if DownloadError.FILE_TOO_BIG in errors:
             await self.message.answer(self._('File size big to 2 gb'))
