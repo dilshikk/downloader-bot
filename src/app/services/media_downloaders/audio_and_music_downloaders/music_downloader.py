@@ -1,6 +1,7 @@
 import asyncio
 import os
 import time
+from functools import partial
 from typing import Optional
 
 from shazamio import Shazam
@@ -9,19 +10,13 @@ from yt_dlp import YoutubeDL
 from src.app.services.media_downloaders.utils.files import get_audio_file_name
 
 # ── In-process prefetch store ──────────────────────────────────────────
-# Stores already-downloaded (file_path, title) keyed by YouTube video_id.
-# Consumed on first click → file is sent instantly instead of re-downloading.
-# TODO: replace with Redis + shared filesystem for multi-process deployments.
-
 _prefetch_results: dict[str, tuple[str, str]] = {}
 _prefetch_tasks:   dict[str, asyncio.Task] = {}       # type: ignore[type-arg]
 _prefetch_ts:      dict[str, float] = {}
-
-_PREFETCH_TTL = 300  # seconds; stale files are deleted automatically
+_PREFETCH_TTL = 300
 
 
 def _cleanup_stale() -> None:
-    """Remove prefetch entries older than TTL and delete their files."""
     now = time.time()
     stale = [vid for vid, ts in _prefetch_ts.items() if now - ts > _PREFETCH_TTL]
     for vid in stale:
@@ -35,6 +30,38 @@ def _cleanup_stale() -> None:
                     os.remove(path)
             except Exception:
                 pass
+
+
+def _build_ydl_opts(output_path: str) -> dict:
+    """yt-dlp options optimised for speed:
+    - TV player client: avoids web throttling
+    - aria2c external downloader: 8 parallel connections per fragment
+    - concurrent_fragment_downloads: 5 parallel fragments
+    Falls back gracefully if aria2c is not installed.
+    """
+    opts: dict = {
+        "format": "251/bestaudio/best",
+        "outtmpl": output_path,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "socket_timeout": 15,
+        "concurrent_fragment_downloads": 5,
+        "extractor_args": {"youtube": {"player_client": ["tv"]}},
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }],
+    }
+
+    # Use aria2c if available — gives 3-5x speedup on large files
+    import shutil
+    if shutil.which("aria2c"):
+        opts["external_downloader"] = "aria2c"
+        opts["external_downloader_args"] = ["-x", "8", "-s", "8", "-k", "1M"]
+
+    return opts
 
 
 class MusicDownloader:
@@ -63,26 +90,16 @@ class MusicDownloader:
     ) -> Optional[tuple[str, str]]:
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         music_output_path = f"./media/audios/{get_audio_file_name()}"
-        yt_dlp_opts = {
-            "format": "251/bestaudio/best",
-            "outtmpl": music_output_path,
-            "quiet": True,
-            "no_warnings": True,
-            "noplaylist": True,
-            "socket_timeout": 15,
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
-        }
+        ydl_opts = _build_ydl_opts(music_output_path)
+
+        loop = asyncio.get_running_loop()
 
         def _download_sync() -> dict:
-            with YoutubeDL(yt_dlp_opts) as ydl:
+            with YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(video_url, download=True)
 
         try:
-            info = await asyncio.to_thread(_download_sync)
+            info = await loop.run_in_executor(None, partial(_download_sync))
             if not info:
                 return None
 
@@ -92,7 +109,6 @@ class MusicDownloader:
                 else info.get("title", "")
             )
 
-            # yt-dlp + FFmpegExtractAudio appends .mp3
             final_path = music_output_path + ".mp3"
             if not os.path.exists(final_path):
                 if os.path.exists(music_output_path):
@@ -123,7 +139,6 @@ class MusicDownloader:
             _prefetch_tasks.pop(video_id, None)
 
     def prefetch(self, video_id: str) -> None:
-        """Fire-and-forget: start downloading video_id in background."""
         _cleanup_stale()
         if video_id in _prefetch_results or video_id in _prefetch_tasks:
             return
@@ -131,7 +146,6 @@ class MusicDownloader:
         _prefetch_tasks[video_id] = task
 
     def consume_prefetch(self, video_id: str) -> Optional[tuple[str, str]]:
-        """Pop and return a completed prefetch result (or None)."""
         result = _prefetch_results.pop(video_id, None)
         _prefetch_ts.pop(video_id, None)
         return result
@@ -139,11 +153,6 @@ class MusicDownloader:
     async def wait_and_consume(
         self, video_id: str, timeout: float = 30.0
     ) -> Optional[tuple[str, str]]:
-        """
-        1. Already done  → return instantly.
-        2. Still running → wait up to `timeout` seconds, then return.
-        3. Not started   → return None (caller should download normally).
-        """
         if video_id in _prefetch_results:
             return self.consume_prefetch(video_id)
 
