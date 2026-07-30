@@ -16,30 +16,28 @@ _DEFAULT_REGION = "global"
 _DEFAULT_PERIOD = "today"
 
 _REGION_EMOJI = {
-    "global":     "🌍",
-    "russia":     "🇷🇺",
+    "global": "🌍",
+    "russia": "🇷🇺",
     "uzbekistan": "🇺🇿",
-    "english":    "🇺🇸",
+    "english": "🇺🇸",
 }
 
 _PERIOD_LABEL = {
     "today": "Bugun",
-    "week":  "Hafta",
+    "week": "Hafta",
     "month": "Oy",
 }
 
 _FAV_PAGE_SIZE = 10
 
-
 def _top_header(region: str, period: str) -> str:
     emoji = _REGION_EMOJI.get(region, "🌍")
     period_label = _PERIOD_LABEL.get(period, period.capitalize())
     return (
-        f"🏆 <b>Top Musiqalar</b>\n"
-        f"{emoji} <b>{region.capitalize()}</b>  •  📅 <b>{period_label}</b>\n\n"
+        f"🏆 Top Musiqalar \n"
+        f"{emoji} {region.capitalize()} • 📅 {period_label} \n\n"
         f"Trekni bosib yuklab oling 👇"
     )
-
 
 def _favorites_keyboard(favorites: list, page: int = 1) -> InlineKeyboardMarkup:
     """Build paginated inline keyboard for favorite tracks."""
@@ -57,8 +55,9 @@ def _favorites_keyboard(favorites: list, page: int = 1) -> InlineKeyboardMarkup:
         label = f"{'❤️'} {i}. {title}"
         if len(label) > 60:
             label = label[:57] + "..."
+        # "fav_play:" is 9 chars, so limit file_id to 55 chars to stay within Telegram's 64-byte limit
         inline_keyboard.append([
-            InlineKeyboardButton(text=label, callback_data=f"fav_play:{file_id[:58]}")
+            InlineKeyboardButton(text=label, callback_data=f"fav_play:{file_id[:55]}")
         ])
 
     # Navigation
@@ -75,12 +74,10 @@ def _favorites_keyboard(favorites: list, page: int = 1) -> InlineKeyboardMarkup:
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
-
 @user_commands_router.message(Command("about"))
 async def handled_command_about(message: Message, lang: str):
     _ = get_translator(lang).gettext
     await message.answer(_("About"))
-
 
 @user_commands_router.message(Command("media_effect"))
 async def handled_command_media_effect(message: Message, lang: str):
@@ -89,7 +86,6 @@ async def handled_command_media_effect(message: Message, lang: str):
         _("Media effect"),
         reply_markup=auido_effect_kbd(actions="by_command", lang=lang)
     )
-
 
 @user_commands_router.message(Command("top"))
 async def handled_command_top(message: Message, lang: str):
@@ -108,7 +104,6 @@ async def handled_command_top(message: Message, lang: str):
         reply_markup=top_chart_keyboard(songs, region=region, period=period, page=1)
     )
 
-
 @user_commands_router.message(Command("my"))
 async def handled_command_my(message: Message, lang: str, pool: asyncpg.Pool):
     """Show user's favorite tracks list."""
@@ -120,7 +115,7 @@ async def handled_command_my(message: Message, lang: str, pool: asyncpg.Pool):
 
     if not favorites:
         await message.answer(
-            "❤️ <b>Sevimli treklar</b>\n\n"
+            "❤️ Sevimli treklar \n\n"
             "Sizda hali sevimli treklar yo'q.\n"
             "Trekni yuklab, 🤍 tugmasini bosing.",
             parse_mode="HTML"
@@ -131,12 +126,11 @@ async def handled_command_my(message: Message, lang: str, pool: asyncpg.Pool):
     fav_list = [{"file_id": r["file_id"], "title": r["title"]} for r in favorites]
 
     await message.answer(
-        f"❤️ <b>Sevimli treklar</b> ({len(fav_list)})\n\n"
+        f"❤️ Sevimli treklar ({len(fav_list)})\n\n"
         f"Trekni bosib tinglang 👇",
         parse_mode="HTML",
         reply_markup=_favorites_keyboard(fav_list, page=1)
     )
-
 
 @user_commands_router.callback_query(F.data.startswith("fav_page:"))
 async def fav_page_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Pool):
@@ -153,7 +147,7 @@ async def fav_page_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Poo
 
     try:
         await callback.message.edit_text(
-            f"❤️ <b>Sevimli treklar</b> ({len(fav_list)})\n\n"
+            f"❤️ Sevimli treklar ({len(fav_list)})\n\n"
             f"Trekni bosib tinglang 👇",
             parse_mode="HTML",
             reply_markup=_favorites_keyboard(fav_list, page=page)
@@ -162,7 +156,6 @@ async def fav_page_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Poo
         pass
 
     await callback.answer()
-
 
 @user_commands_router.callback_query(F.data.startswith("fav_play:"))
 async def fav_play_handler(callback: CallbackQuery, lang: str):
@@ -180,7 +173,6 @@ async def fav_play_handler(callback: CallbackQuery, lang: str):
     except Exception as e:
         print("ERROR in fav_play_handler:", e)
         await callback.answer("Trekni yuborishda xatolik. Qayta qo'shing.", show_alert=True)
-
 
 @user_commands_router.callback_query(TopFilterCD.filter())
 async def top_filter_handler(callback: CallbackQuery, callback_data: TopFilterCD, lang: str):
@@ -209,7 +201,6 @@ async def top_filter_handler(callback: CallbackQuery, callback_data: TopFilterCD
 
     await callback.answer()
 
-
 @user_commands_router.callback_query(F.data.startswith("page:"))
 async def page_handler(callback: CallbackQuery, lang: str):
     _ = get_translator(lang).gettext
@@ -225,11 +216,9 @@ async def page_handler(callback: CallbackQuery, lang: str):
     except TelegramBadRequest:
         pass
 
-
 @user_commands_router.callback_query(F.data.in_(["close", "delete_list_music"]))
 async def close_handler(callback: CallbackQuery):
     await callback.message.delete()
-
 
 @user_commands_router.callback_query(F.data == "noop")
 async def noop_handler(callback: CallbackQuery):
