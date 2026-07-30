@@ -38,11 +38,16 @@ class URLType(str, Enum):
     TIKTOK_CDN_PHOTO = "tiktok_cdn_photo"
     TIKTOK_CDN_UNKNOWN = "tiktok_cdn_unknown"
 
+    # VK
+    VK_VIDEO = "vk_video"
+    VK_CLIP = "vk_clip"
+
+
 @dataclass
 class URLInfo:
     """Information about validated URL"""
     url_type: URLType
-    platform: str  # "instagram", "youtube", "tiktok", etc.
+    platform: str  # "instagram", "youtube", "tiktok", "vk", etc.
     is_cdn: bool
     video_id: Optional[str] = None
     username: Optional[str] = None
