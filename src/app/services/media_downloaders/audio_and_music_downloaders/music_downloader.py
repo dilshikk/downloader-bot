@@ -40,20 +40,20 @@ def _is_drm_error(e: Exception) -> bool:
 
 def _build_ydl_opts(output_path: str) -> dict:
     """
-    yt-dlp options optimised for speed and DRM avoidance.
+    yt-dlp options for speed and broad compatibility.
 
     Format strategy:
-    - Prefer webm/opus (format 251) — no FFmpeg conversion needed, instant save
-    - Fall back to m4a, then any bestaudio
-    - FFmpeg postprocessor REMOVED — saves 2-5 seconds per track
+    - bestaudio: always available, yt-dlp picks best audio-only stream
+      (webm/opus where available, m4a/mp4a otherwise)
+    - No format codes like "251" — those are codec-specific and absent on
+      many regional / older uploads (causes "Requested format not available")
+    - No FFmpeg postprocessor — file served as-is, saves 2-5s per track
 
-    Player client strategy:
-    - "web" and "android" — avoid DRM-heavy tv/ios clients used by Topic channels
+    Player clients: web + android avoid DRM-heavy tv/ios clients.
     """
     import shutil
     opts: dict = {
-        # webm/opus: no re-encoding needed, Telegram plays it natively as audio
-        "format": "251/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
+        "format": "bestaudio/best",
         "outtmpl": output_path,
         "quiet": True,
         "no_warnings": True,
@@ -74,8 +74,8 @@ def _build_ydl_opts(output_path: str) -> dict:
 
 
 def _resolve_path(base: str) -> Optional[str]:
-    """Return the actual downloaded file path (no FFmpeg, so check native formats first)."""
-    for suffix in ("", ".webm", ".m4a", ".mp3", ".opus", ".ogg"):
+    """Return the actual downloaded file (no FFmpeg, native container)."""
+    for suffix in ("", ".webm", ".m4a", ".mp4", ".mp3", ".opus", ".ogg"):
         candidate = base + suffix
         if os.path.exists(candidate):
             return candidate
@@ -108,8 +108,7 @@ class MusicDownloader:
     ) -> Optional[tuple[str, str]]:
         """
         Download audio for a single video_id.
-        Returns None immediately on DRM error so the caller can try the next result.
-        No FFmpeg conversion — file is saved as-is (webm/m4a).
+        Returns None on DRM or any error so the caller can try the next result.
         """
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         music_output_path = f"./media/audios/{get_audio_file_name()}"
@@ -156,7 +155,6 @@ class MusicDownloader:
         loop = asyncio.get_running_loop()
 
         def _flat_search() -> list[tuple[str, str]]:
-            """Returns list of (video_id, uploader) tuples."""
             opts = {
                 "quiet": True,
                 "skip_download": True,
