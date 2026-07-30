@@ -240,6 +240,31 @@ def auido_effect_kbd(actions: str, lang: str):
     return keyboard_builder.as_markup()
 
 
+def not_channels_button(channels: list) -> InlineKeyboardMarkup:
+    """Subscribe buttons for mandatory channels + 'Check subscription' button."""
+    keyboard_builder = InlineKeyboardBuilder()
+
+    for channel in channels:
+        # channel tuple: (id, name, url/username, is_mandatory)
+        channel_name = channel[1] if len(channel) > 1 else "Channel"
+        channel_url = channel[2] if len(channel) > 2 else None
+
+        if channel_url:
+            url = channel_url if channel_url.startswith("http") else f"https://t.me/{channel_url.lstrip('@')}"
+        else:
+            url = f"https://t.me/c/{str(channel[0]).lstrip('-100')}"
+
+        keyboard_builder.row(
+            InlineKeyboardButton(text=f"📢 {channel_name}", url=url)
+        )
+
+    keyboard_builder.row(
+        InlineKeyboardButton(text="✅ Tekshirish", callback_data="check_sub")
+    )
+
+    return keyboard_builder.as_markup()
+
+
 def admin_main_menu(lang: str):
     _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
@@ -419,10 +444,9 @@ def delite_referral_menu(referral_id: str, lang: str) -> InlineKeyboardMarkup:
     return keyboard_builder.as_markup()
 
 
-# ── Admin keyboards that were missing after inline.py rewrite ──────────
+# ── Admin keyboards ────────────────────────────────────────────────────
 
 def back_to_channel_menu(lang: str) -> InlineKeyboardMarkup:
-    """Back button to admin main menu (used in statistics)."""
     _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
     keyboard_builder.row(
@@ -432,7 +456,6 @@ def back_to_channel_menu(lang: str) -> InlineKeyboardMarkup:
 
 
 def back_to_subscription_menu(lang: str) -> InlineKeyboardMarkup:
-    """Cancel / back button shown while adding a channel or bot."""
     _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
     keyboard_builder.row(
@@ -442,7 +465,6 @@ def back_to_subscription_menu(lang: str) -> InlineKeyboardMarkup:
 
 
 def add_chanel_url_defult(lang: str) -> InlineKeyboardMarkup:
-    """'Use default URL' button shown when adding a channel."""
     _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
     keyboard_builder.row(
@@ -460,7 +482,6 @@ def add_chanel_url_defult(lang: str) -> InlineKeyboardMarkup:
 
 
 def delite_bot_menu(username: str, lang: str) -> InlineKeyboardMarkup:
-    """Delete / cancel confirmation for bots."""
     _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
     keyboard_builder.row(
@@ -477,7 +498,6 @@ def delite_bot_menu(username: str, lang: str) -> InlineKeyboardMarkup:
 
 
 def add_bot_url_defult(lang: str) -> InlineKeyboardMarkup:
-    """'Use default URL' button shown when adding a bot."""
     _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
     keyboard_builder.row(
@@ -495,7 +515,6 @@ def add_bot_url_defult(lang: str) -> InlineKeyboardMarkup:
 
 
 def menu_referrals_kb(referral_id: str, lang: str) -> InlineKeyboardMarkup:
-    """Single-referral action menu (delete + back)."""
     _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
     keyboard_builder.row(
@@ -511,7 +530,6 @@ def menu_referrals_kb(referral_id: str, lang: str) -> InlineKeyboardMarkup:
 
 
 def back_to_admin_menu_keyboards(lang: str) -> InlineKeyboardMarkup:
-    """Simple back-to-admin-menu button."""
     _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
     keyboard_builder.row(
