@@ -1,15 +1,132 @@
+from enum import Enum
+from typing import Optional
+
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from src.app.keyboards.inline import auido_effect_kbd, songs_keyboard
+from src.app.keyboards.inline import auido_effect_kbd
 from src.app.services.media_downloaders.seekers.search import YouTubeSearcher
 from src.app.utils.i18n import get_translator
 
 user_commands_router = Router()
 
-DEFAULT_REGION = "Uzbekistan"
+# Shared instance — keeps the aiohttp session and in-process cache alive
+_searcher = YouTubeSearcher()
 
+# region code -> (flag emoji, Last.fm country name)
+REGIONS = {
+    "uz": ("🇺🇿", "Uzbekistan"),
+    "ru": ("🇷🇺", "Russia"),
+    "gb": ("🇬🇧", "United Kingdom"),
+    "kz": ("🇰🇿", "Kazakhstan"),
+    "tr": ("🇹🇷", "Turkey"),
+    "az": ("🇦🇿", "Azerbaijan"),
+}
+
+PAGE_SIZE = 10
+DEFAULT_REGION = "uz"
+
+
+# ── Chart state ───────────────────────────────────────────────────────
+
+class ChartState(Enum):
+    OK = "ok"
+    EMPTY = "empty"
+    ERROR = "error"
+
+
+async def fetch_chart_safe(region_name: str) -> tuple[ChartState, list[dict]]:
+    try:
+        songs = await _searcher.get_top_by_region(region_name, limit=50)
+    except Exception as e:
+        print("ERROR fetch_chart_safe:", e)
+        return ChartState.ERROR, []
+
+    if not songs:
+        return ChartState.EMPTY, []
+
+    return ChartState.OK, songs
+
+
+# ── Keyboard ──────────────────────────────────────────────────────────
+
+def build_top_keyboard(
+    active_region: str,
+    page: int = 0,
+    has_next: bool = False,
+    has_prev: bool = False,
+) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for code, (flag, _) in REGIONS.items():
+        text = f"{flag} ✅" if code == active_region else flag
+        # switching region always resets to page 0
+        builder.button(text=text, callback_data=f"top_region:{code}:0")
+    builder.adjust(len(REGIONS))
+
+    nav: list[InlineKeyboardButton] = []
+    if has_prev:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"top_page:{active_region}:{page - 1}"))
+    if has_next:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"top_page:{active_region}:{page + 1}"))
+    if nav:
+        builder.row(*nav)
+
+    builder.row(InlineKeyboardButton(text="❌", callback_data="close"))
+    return builder.as_markup()
+
+
+# ── Text ──────────────────────────────────────────────────────────────
+
+def build_top_text(songs: list[dict], page: int) -> str:
+    start = page * PAGE_SIZE
+    chunk = songs[start: start + PAGE_SIZE]
+    lines = ["<b>🎵 TOP Popular Songs</b>", ""]
+    for i, track in enumerate(chunk, start=start + 1):
+        artist = track.get("artist", "Unknown")
+        title = track.get("title", "Unknown")
+        lines.append(f"{i}. {artist} — {title}")
+    return "\n".join(lines)
+
+
+# ── Shared render helper ──────────────────────────────────────────────
+
+async def render_chart(
+    target: Message | CallbackQuery,
+    region_code: str,
+    page: int,
+    is_edit: bool,
+) -> None:
+    _, region_name = REGIONS.get(region_code, REGIONS[DEFAULT_REGION])
+    state, songs = await fetch_chart_safe(region_name)
+
+    if state == ChartState.ERROR:
+        text = "⚠️ Не удалось загрузить чарт. Last.fm недоступен, попробуйте позже."
+        keyboard = build_top_keyboard(region_code)
+    elif state == ChartState.EMPTY:
+        flag = REGIONS.get(region_code, REGIONS[DEFAULT_REGION])[0]
+        text = f"{flag} Для этого региона треков не найдено."
+        keyboard = build_top_keyboard(region_code)
+    else:
+        max_page = (len(songs) - 1) // PAGE_SIZE
+        page = min(max(page, 0), max_page)
+        text = build_top_text(songs, page)
+        keyboard = build_top_keyboard(
+            region_code,
+            page=page,
+            has_next=page < max_page,
+            has_prev=page > 0,
+        )
+
+    if is_edit:
+        await target.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        await target.answer(text, reply_markup=keyboard, parse_mode="HTML")
+
+
+# ── Handlers ──────────────────────────────────────────────────────────
 
 @user_commands_router.message(Command("about"))
 async def handled_command_about(message: Message, lang: str):
@@ -27,37 +144,22 @@ async def handled_command_media_effect(message: Message, lang: str):
 
 
 @user_commands_router.message(Command("top"))
-async def handled_command_top(message: Message, lang: str):
-    _ = get_translator(lang).gettext
-    searcher = YouTubeSearcher()
-
-    # Allow custom region: /top Russia  (defaults to Uzbekistan)
-    args = message.text.split(maxsplit=1)
-    region = args[1].strip() if len(args) > 1 else DEFAULT_REGION
-
-    songs = await searcher.get_top_by_region(region, limit=50)
-
-    if not songs:
-        await message.answer("Top musiqalarni olishda xatolik yuz berdi.")
-        return
-
-    await message.answer(_("Top songs"), reply_markup=songs_keyboard(songs, page=1))
+async def handled_command_top(message: Message):
+    await render_chart(message, region_code=DEFAULT_REGION, page=0, is_edit=False)
 
 
-@user_commands_router.callback_query(F.data.startswith("page:"))
-async def page_handler(callback: CallbackQuery, lang: str):
-    _ = get_translator(lang).gettext
-    searcher = YouTubeSearcher()
+@user_commands_router.callback_query(F.data.startswith("top_region:"))
+async def handle_region_switch(callback: CallbackQuery):
+    _, region_code, page_str = callback.data.split(":")
+    await render_chart(callback, region_code, int(page_str), is_edit=True)
+    await callback.answer()
 
-    # Region is not stored in callback; use default
-    songs = await searcher.get_top_by_region(DEFAULT_REGION, limit=50)
-    _, page_s = callback.data.split(":")
-    page = int(page_s)
 
-    await callback.message.edit_text(
-        text=_("Top popular songs"),
-        reply_markup=songs_keyboard(songs, page=page),
-    )
+@user_commands_router.callback_query(F.data.startswith("top_page:"))
+async def handle_page_switch(callback: CallbackQuery):
+    _, region_code, page_str = callback.data.split(":")
+    await render_chart(callback, region_code, int(page_str), is_edit=True)
+    await callback.answer()
 
 
 @user_commands_router.callback_query(F.data.in_(["close", "delete_list_music"]))
