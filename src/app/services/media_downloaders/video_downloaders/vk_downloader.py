@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from yt_dlp import YoutubeDL
 
@@ -16,11 +17,14 @@ class VKDownloader:
 
         def _download():
             ydl_opts = {
-                'format': 'best[filesize<2000M]/best',
+                # Prefer mp4 so Telegram can play video inline.
+                # Fall back to best available if no mp4 stream exists.
+                'format': 'best[ext=mp4][filesize<2000M]/best[ext=mp4]/best[filesize<2000M]/best',
                 'outtmpl': video_output_path + '.%(ext)s',
+                'merge_output_format': 'mp4',
                 'quiet': True,
                 'no_warnings': True,
-                'socket_timeout': 20,
+                'socket_timeout': 30,
             }
             with YoutubeDL(ydl_opts) as ydl:
                 return ydl.extract_info(video_url, download=True)
@@ -35,8 +39,7 @@ class VKDownloader:
             ext = info.get('ext', 'mp4')
             final_path = f'{video_output_path}.{ext}'
 
-            # Fallback scan if ext is wrong
-            import os
+            # Fallback scan if ext guess is wrong
             if not os.path.exists(final_path):
                 for candidate_ext in ('mp4', 'webm', 'mkv', 'avi'):
                     candidate = f'{video_output_path}.{candidate_ext}'
