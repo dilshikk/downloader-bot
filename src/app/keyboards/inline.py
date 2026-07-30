@@ -1,6 +1,6 @@
 from typing import List, Dict
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, SwitchInlineQueryChosenChat
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.app.keyboards.callback_data import MusicCD, SearchMusicInVideoCD, AudioCD, MediaEffectsCD, AdminMainMenuCD, \
@@ -98,7 +98,7 @@ def audio_keyboard(lang: str, file_id: str = "", title: str = "", is_favorite: b
     keyboard_builder = InlineKeyboardBuilder()
 
     if file_id:
-        # One row: ❤️ (favorite) on left, ⊞ (effects) on right
+        # Row 1: ❤️ (favorite) + ⊞ (effects) side by side
         fav_btn = InlineKeyboardButton(
             text="❤️" if is_favorite else "🤍",
             callback_data=FavoriteCD(action="remove" if is_favorite else "add").pack()
@@ -108,6 +108,20 @@ def audio_keyboard(lang: str, file_id: str = "", title: str = "", is_favorite: b
             callback_data="effects"
         )
         keyboard_builder.row(fav_btn, effects_btn)
+
+        # Row 2: Share to group button
+        keyboard_builder.row(
+            InlineKeyboardButton(
+                text=_("Guruhga Qo'shish") + " +",
+                switch_inline_query_chosen_chat=SwitchInlineQueryChosenChat(
+                    query=file_id,
+                    allow_group_chats=True,
+                    allow_channel_posts=True,
+                    allow_bot_chats=False,
+                    allow_user_chats=True,
+                )
+            )
+        )
     else:
         keyboard_builder.row(
             InlineKeyboardButton(text="⊞", callback_data="effects")
