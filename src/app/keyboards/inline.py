@@ -29,6 +29,19 @@ PERIOD_LABELS: Dict[str, str] = {
     "month": "📆 Oy",
 }
 
+# Max bytes for music_name in callback_data (64 total - prefix "pop:" = 4 bytes)
+_MAX_MUSIC_NAME_BYTES = 59
+
+
+def _truncate_utf8(text: str, max_bytes: int) -> str:
+    """Truncate a string so its UTF-8 encoding fits within max_bytes."""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    truncated = encoded[:max_bytes]
+    # Avoid cutting in the middle of a multi-byte character
+    return truncated.decode("utf-8", errors="ignore")
+
 
 def video_keyboards(lang: str):
     _ = get_translator(lang).gettext
@@ -78,11 +91,13 @@ def songs_keyboard(tracks: List[Dict[str, str]], page: int = 1) -> InlineKeyboar
         label = f"{i + 1}. {t.get('artist', 'Unknown')} — {t.get('title', 'Unknown')}"
         if len(label) > 64:
             label = label[:61] + "..."
+        search_query = f"{t.get('artist', '')} {t.get('title', '')}"
+        search_query = _truncate_utf8(search_query, _MAX_MUSIC_NAME_BYTES)
         inline_keyboard.append(
             [
                 InlineKeyboardButton(
                     text=label,
-                    callback_data=TopPopularMusicCD(music_name=label[:40]).pack()
+                    callback_data=TopPopularMusicCD(music_name=search_query).pack()
                 )
             ]
         )
@@ -146,8 +161,7 @@ def top_chart_keyboard(
         if len(label) > 64:
             label = label[:61] + "..."
         search_query = f"{artist} {title}"
-        if len(search_query) > 40:
-            search_query = search_query[:40]
+        search_query = _truncate_utf8(search_query, _MAX_MUSIC_NAME_BYTES)
         inline_keyboard.append(
             [
                 InlineKeyboardButton(
