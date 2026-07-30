@@ -66,6 +66,15 @@ def _build_ydl_opts(output_path: str, player_client: list[str] | None = None) ->
     return opts
 
 
+def _resolve_path(base: str) -> Optional[str]:
+    """Return the actual file path after FFmpeg post-processing."""
+    for suffix in (".mp3", "", ".m4a", ".webm", ".opus", ".ogg"):
+        candidate = base + suffix
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
 class MusicDownloader:
     def __init__(self) -> None:
         self.shazam = Shazam()
@@ -107,7 +116,6 @@ class MusicDownloader:
             info = await loop.run_in_executor(None, partial(_download_sync))
         except Exception as e:
             if _is_drm_error(e):
-                # Caller should try next video_id
                 print(f"DRM skip {video_id}: {e}")
                 return None
             print("ERROR in YouTube download:", e)
@@ -122,67 +130,55 @@ class MusicDownloader:
             else info.get("title", "")
         )
 
-        final_path = music_output_path + ".mp3"
-        if not os.path.exists(final_path):
-            if os.path.exists(music_output_path):
-                final_path = music_output_path
-            else:
-                for ext in (".m4a", ".webm", ".opus", ".ogg"):
-                    candidate = music_output_path + ext
-                    if os.path.exists(candidate):
-                        final_path = candidate
-                        break
+        final_path = _resolve_path(music_output_path)
+        if not final_path:
+            return None
 
         return final_path, title
 
     async def download_music_by_query(
-        self, query: str
+        self, query: str, skip_ids: list[str] | None = None
     ) -> Optional[tuple[str, str]]:
-        """Last-resort: yt-dlp ytsearch, skips DRM results automatically."""
-        music_output_path = f"./media/audios/{get_audio_file_name()}"
-        ydl_opts = _build_ydl_opts(music_output_path)
-        ydl_opts["default_search"] = "ytsearch5"
-
+        """
+        DRM fallback: yt-dlp ytsearch flat → collect candidate IDs →
+        iterate and try each one, skipping DRM results and known bad IDs.
+        """
+        skip_set = set(skip_ids or [])
         loop = asyncio.get_running_loop()
 
-        def _run() -> dict:
-            with YoutubeDL(ydl_opts) as ydl:
-                return ydl.extract_info(query, download=True)
+        # Step 1: flat search — fast, no download
+        def _flat_search() -> list[str]:
+            opts = {
+                "quiet": True,
+                "skip_download": True,
+                "extract_flat": True,
+                "noplaylist": True,
+            }
+            try:
+                with YoutubeDL(opts) as ydl:
+                    data = ydl.extract_info(f"ytsearch10:{query}", download=False)
+                if not data:
+                    return []
+                return [
+                    e["id"] for e in data.get("entries", [])
+                    if e and e.get("id") and e["id"] not in skip_set
+                ]
+            except Exception as ex:
+                print("ERROR flat search:", ex)
+                return []
 
-        try:
-            info = await loop.run_in_executor(None, partial(_run))
-        except Exception as e:
-            print("ERROR in download_music_by_query:", e)
+        candidates = await loop.run_in_executor(None, _flat_search)
+        if not candidates:
             return None
 
-        if not info:
-            return None
+        # Step 2: try each candidate until one downloads without DRM
+        for vid in candidates:
+            result = await self.download_music_from_youtube(vid)
+            if result:
+                return result
+            # DRM or error — try next
 
-        # ytsearch5 returns entries list
-        entry = None
-        if "entries" in info:
-            for e in info["entries"]:
-                if e:
-                    entry = e
-                    break
-        else:
-            entry = info
-
-        if not entry:
-            return None
-
-        title = entry.get("title", "")
-        final_path = music_output_path + ".mp3"
-        if not os.path.exists(final_path):
-            if os.path.exists(music_output_path):
-                final_path = music_output_path
-            else:
-                for ext in (".m4a", ".webm", ".opus", ".ogg"):
-                    candidate = music_output_path + ext
-                    if os.path.exists(candidate):
-                        final_path = candidate
-                        break
-        return final_path, title
+        return None
 
     # ── Prefetch helpers ──────────────────────────────────────────────
 
