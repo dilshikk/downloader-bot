@@ -92,13 +92,20 @@ async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, 
                 effect_name = effect_str or (general_effect_type.value if general_effect_type else "")
                 title_text = f"{audio_title} {effect_name} remix" if audio_title else f"voice {effect_name} remix"
 
-                await call.message.edit_media(
-                    InputMediaAudio(
-                        media=FSInputFile(out_put_media_path),
-                        caption=_("Downloaded by"),
-                        title=title_text
-                    )
+                # Send new audio message with placeholder keyboard first
+                sent = await call.message.answer_audio(
+                    audio=FSInputFile(out_put_media_path),
+                    caption=_("Downloaded by"),
+                    title=title_text,
+                    reply_markup=audio_keyboard(lang, file_id="placeholder", title=title_text, is_favorite=False)
                 )
+                # Update keyboard with real file_id
+                real_file_id = sent.audio.file_id if sent and sent.audio else ""
+                if real_file_id:
+                    await sent.edit_reply_markup(
+                        reply_markup=audio_keyboard(lang, file_id=real_file_id, title=title_text, is_favorite=False)
+                    )
+
         except Exception as e:
             print("ERROR in take_media_effect:", e)
             await call.message.answer(_("Error in processed media"))
@@ -172,11 +179,17 @@ async def take_media(message: Message, state: FSMContext, bot: Bot, lang: str):
             effect_name = effect_str or (general_effect_type.value if general_effect_type else "")
             title_text = f"{audio_title} {effect_name} remix" if audio_title else f"voice {effect_name} remix"
 
-            await message.answer_audio(
+            sent = await message.answer_audio(
                 audio=FSInputFile(out_put_media_path),
                 caption=_("Downloaded by"),
-                title=title_text
+                title=title_text,
+                reply_markup=audio_keyboard(lang, file_id="placeholder", title=title_text, is_favorite=False)
             )
+            real_file_id = sent.audio.file_id if sent and sent.audio else ""
+            if real_file_id:
+                await sent.edit_reply_markup(
+                    reply_markup=audio_keyboard(lang, file_id=real_file_id, title=title_text, is_favorite=False)
+                )
 
     except Exception as e:
         print("ERROR in take_media:", e)
