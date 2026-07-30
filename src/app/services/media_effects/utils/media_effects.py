@@ -43,14 +43,16 @@ class MediaEffectsTools:
                 p3 = await asyncio.create_subprocess_exec(*ff_slow, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
                 await p3.wait()
 
-            # Tezlashtirish
+            # Minus - ovozni olib tashlash (vocal removal)
+            # Stereo kanallar orasidagi umumiy qismni (vokal) olib tashlaydi
             elif effect_type == GeneralEffectAction.EFFECT_SPEED:
-                ff_speed = [
+                ff_minus = [
                     "ffmpeg", "-y", "-i", input_file,
-                    "-filter_complex", "[0:a]asetrate=44100*1.25,aresample=44100,atempo=1.0,volume=1.05[a]",
-                    "-map", "[a]", processed_wav
+                    "-af", "pan=stereo|c0=c0-c1|c1=c1-c0",
+                    "-ar", "44100", "-ac", "2",
+                    processed_wav
                 ]
-                p4 = await asyncio.create_subprocess_exec(*ff_speed, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+                p4 = await asyncio.create_subprocess_exec(*ff_minus, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
                 await p4.wait()
 
             # Konsert zal effekti
@@ -111,7 +113,6 @@ class MediaEffectsTools:
             if not await asyncio.to_thread(os.path.exists, temp_wav):
                 raise FileNotFoundError("Failed to convert input to WAV")
 
-            # FFmpeg audio effekti video bilan birlashtiriladi
             if effect_type == GeneralEffectAction.EFFECT_8D:
                 cmd = ["ffmpeg", "-y", "-i", input_file, "-c:v", "copy", "-filter:a", "apulsator=hz=0.2", "-c:a", "aac", "-b:a", "320k", output_file_path]
                 p = await asyncio.create_subprocess_exec(*cmd)
@@ -124,8 +125,9 @@ class MediaEffectsTools:
                 await p.wait()
                 return output_file_path
 
+            # Minus - ovozni olib tashlash video uchun
             elif effect_type == GeneralEffectAction.EFFECT_SPEED:
-                cmd = ["ffmpeg", "-y", "-i", input_file, "-filter_complex", "[0:v]setpts=0.75*PTS[v];[0:a]atempo=1.25[a]", "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac", "-b:a", "320k", output_file_path]
+                cmd = ["ffmpeg", "-y", "-i", input_file, "-filter_complex", "[0:a]pan=stereo|c0=c0-c1|c1=c1-c0[a]", "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "320k", output_file_path]
                 p = await asyncio.create_subprocess_exec(*cmd)
                 await p.wait()
                 return output_file_path
