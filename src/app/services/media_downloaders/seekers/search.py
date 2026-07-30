@@ -13,19 +13,18 @@ LASTFM_API_URL = "http://ws.audioscrobbler.com/2.0/"
 _API_CACHE: Dict[str, tuple] = {}
 CACHE_TTL_BY_PERIOD: Dict[str, int] = {
     "today": 60 * 60,       # 1 hour — freshest
-    "week":  60 * 60 * 6,   # 6 hours
+    "week": 60 * 60 * 6,    # 6 hours
     "month": 60 * 60 * 24,  # 24 hours
 }
 
 REGION_LASTFM_COUNTRY: Dict[str, Optional[str]] = {
-    "global":     None,
-    "russia":     "russia",
+    "global": None,
+    "russia": "russia",
     "uzbekistan": "uzbekistan",
-    "english":    "united states",
+    "english": "united states",
 }
 
 MAX_TRACKS_PER_ARTIST = 3
-
 
 class YouTubeSearcher:
 
@@ -61,12 +60,14 @@ class YouTubeSearcher:
         """Fast YouTube search using extract_flat for speed.
 
         Returns (results_list, entries_list, errors_list).
-        Uses extract_flat to avoid fetching full video info — ~10x faster.
+        Uses extract_flat=True to avoid fetching full video info — ~10x faster.
         """
         def extract_search():
             ydl_opts = {
                 "quiet": True,
-                "extract_flat": "in_playlist",
+                # Use True instead of "in_playlist" — compatible with all yt-dlp versions
+                # and required for ytsearch: scheme to be handled by yt-dlp's own extractor
+                "extract_flat": True,
                 "skip_download": True,
                 "socket_timeout": 10,
             }
@@ -142,13 +143,13 @@ class YouTubeSearcher:
         return result
 
     # ------------------------------------------------------------------ #
-    #  Legacy helper kept for backward compat (used by old /top handler)  #
+    # Legacy helper kept for backward compat (used by old /top handler)  #
     # ------------------------------------------------------------------ #
     async def get_top_music(self, limit: int = 50) -> List[Dict[str, str]]:
         return await self.get_top_by_region_period("global", "today", limit)
 
     # ------------------------------------------------------------------ #
-    #  Main method: region + period aware top chart (Last.fm only)        #
+    # Main method: region + period aware top chart (Last.fm only)        #
     # ------------------------------------------------------------------ #
     async def get_top_by_region_period(
         self,
@@ -189,12 +190,12 @@ class YouTubeSearcher:
                         return []
                     data = await resp.json()
 
-            tracks_data = data.get("tracks", {}).get("track", []) or []
-            for t in tracks_data:
-                artist_obj = t.get("artist")
-                artist = artist_obj.get("name") if isinstance(artist_obj, dict) else (artist_obj or "")
-                title = t.get("name") or ""
-                result.append({"artist": artist, "title": title})
+                    tracks_data = data.get("tracks", {}).get("track", []) or []
+                    for t in tracks_data:
+                        artist_obj = t.get("artist")
+                        artist = artist_obj.get("name") if isinstance(artist_obj, dict) else (artist_obj or "")
+                        title = t.get("name") or ""
+                        result.append({"artist": artist, "title": title})
 
         except Exception as e:
             print("ERROR get_top_by_region_period:", e)
