@@ -8,6 +8,7 @@ from src.app.utils.enums.general import GeneralEffectAction
 
 class MusicCD(CallbackData, prefix="music"):
     video_id: str
+    title: str = ""  # track title for DRM fallback search
 
 
 class TopPopularMusicCD(CallbackData, prefix="pop"):
