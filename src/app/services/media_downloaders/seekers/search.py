@@ -13,12 +13,15 @@ LASTFM_API_URL = "http://ws.audioscrobbler.com/2.0/"
 _API_CACHE: Dict[str, tuple] = {}
 CACHE_TTL_SECONDS = 60 * 60
 
+# Negative cache: при ошибке API не бить повторно 60 сек
+_NEGATIVE_CACHE: Dict[str, float] = {}
+NEGATIVE_CACHE_TTL = 60
+
 
 class YouTubeSearcher:
 
     def __init__(self, session: Optional[aiohttp.ClientSession] = None):
         self.settings = Settings()
-        # переиспользуемая сессия — без неё каждый вызов делает новый TLS handshake
         self._session = session
         self._owns_session = session is None
 
@@ -43,7 +46,6 @@ class YouTubeSearcher:
                     info = ydl.extract_info(video_url, download=False)
                     if "entries" in info:
                         info = info["entries"][0]
-
                     filesize = info.get("filesize") or info.get("filesize_approx")
                     return {
                         "title": info.get("title"),
@@ -63,7 +65,7 @@ class YouTubeSearcher:
     async def search_music(
         self,
         query: str,
-        max_count: int = 5
+        max_count: int = 5,
     ) -> tuple[List[Dict[str, Any]], Any, List[str]]:
 
         def extract_search():
@@ -72,7 +74,6 @@ class YouTubeSearcher:
                 "skip_download": True,
                 "extract_flat": True,
             }
-
             search_query = f"ytsearch{max_count}:{query}"
             results = []
             errors = []
@@ -86,7 +87,6 @@ class YouTubeSearcher:
                     return [], [], errors
 
                 entries = data.get("entries", [])
-
                 for entry in entries:
                     if not entry:
                         continue
@@ -130,6 +130,11 @@ class YouTubeSearcher:
         if cached is not None:
             return cached
 
+        # Negative cache: если недавно была ошибка — не бьём API снова
+        neg_ts = _NEGATIVE_CACHE.get(cache_key)
+        if neg_ts and time.time() - neg_ts < NEGATIVE_CACHE_TTL:
+            raise RuntimeError("Last.fm temporarily unavailable (negative cache)")
+
         params = {
             "method": method,
             "api_key": self.settings.lastfm_api_key,
@@ -143,11 +148,15 @@ class YouTubeSearcher:
             session = await self._get_session()
             async with session.get(LASTFM_API_URL, params=params, timeout=15) as resp:
                 if resp.status != 200:
-                    return []
+                    _NEGATIVE_CACHE[cache_key] = time.time()
+                    raise RuntimeError(f"Last.fm HTTP {resp.status}")
                 data = await resp.json()
+        except RuntimeError:
+            raise
         except Exception as e:
+            _NEGATIVE_CACHE[cache_key] = time.time()
             print("ERROR _fetch_top_tracks:", e)
-            return []
+            raise
 
         tracks = data.get("tracks", {}).get("track", []) or []
         result: List[Dict[str, str]] = []
@@ -169,9 +178,6 @@ class YouTubeSearcher:
         )
 
     async def get_top_by_region(self, region: str, limit: int = 50) -> List[Dict[str, str]]:
-        # geo.gettoptracks — единственный метод Last.fm, который реально
-        # фильтрует по стране; region должен быть ISO country name,
-        # который Last.fm ожидает (например "Russia", "United States")
         cache_key = f"lastfm:{region}:{limit}"
         return await self._fetch_top_tracks(
             method="geo.gettoptracks",
