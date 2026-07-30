@@ -3,11 +3,9 @@ import os
 from pathlib import Path
 from typing import List, Dict
 
-import aiofiles
-import aiohttp
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, FSInputFile, CallbackQuery, InputMediaAudio, InputMediaPhoto, InputMediaVideo
+from aiogram.types import Message, FSInputFile, CallbackQuery
 
 from src.app.core.config import Settings
 from src.app.database.redis_utils import (
@@ -17,6 +15,7 @@ from src.app.database.redis_utils import (
 from src.app.keyboards.callback_data import MusicCD, SearchMusicInVideoCD, AudioCD, MediaEffectsCD, TopPopularMusicCD
 from src.app.keyboards.inline import video_keyboards, music_keyboards, audio_keyboard, auido_effect_kbd
 from src.app.services.media_downloaders.all_downloader import AllDownloader
+from src.app.services.media_downloaders.audio_and_music_downloaders.music_downloader import MusicDownloader
 from src.app.services.media_downloaders.utils.files import get_video_file_name
 from src.app.services.media_effects.media_effects import MediaEffects
 from src.app.states.user.media_effect import SendMediaSG
@@ -30,6 +29,19 @@ from src.app.utils.url_validators import SocialMediaURLValidator
 
 media_downloader_router = Router()
 
+# Shared MusicDownloader instance — holds the in-process prefetch store
+_music_downloader = MusicDownloader()
+
+
+def _prefetch_top(music_list: list, n: int = 2) -> None:
+    """Start background download for the top-N tracks after showing search results."""
+    for track in music_list[:n]:
+        video_id = track.get("video_id") or track.get("id") or track.get("videoId")
+        if video_id:
+            _music_downloader.prefetch(video_id)
+
+
+# ── Media effects ──────────────────────────────────────────────────────
 
 @media_downloader_router.callback_query(MediaEffectsCD.filter())
 async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, bot: Bot, state: FSMContext, lang: str):
@@ -38,95 +50,93 @@ async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, 
         await state.update_data({"media_effect_type": callback_data.effect})
         await state.set_state(SendMediaSG.send_media)
         await call.message.edit_text(_("Send media"))
-    else:
-        loader = AnimatedLoader(call.message, EFFECT_FRAMES)
-        await loader.start()
-        media_effect = MediaEffects(message=call.message, bot=bot)
-        out_put_media_path = None
-        effect_sent = False
+        return
+
+    loader = AnimatedLoader(call.message, EFFECT_FRAMES)
+    await loader.start()
+    media_effect = MediaEffects(message=call.message, bot=bot)
+    out_put_media_path = None
+    effect_sent = False
+
+    try:
+        effect_str = callback_data.effect.value
+        if not effect_str:
+            await call.message.answer(_("Effec type not found"))
+            return
 
         try:
-            effect_str = callback_data.effect.value
-            if not effect_str:
-                await call.message.answer(_("Effec type not found"))
-                return
-
-            try:
-                general_effect_type = GeneralEffectAction(effect_str)
-            except Exception as e:
-                print("ERROR", e)
-                mapping = {
-                    "8d": GeneralEffectAction.EFFECT_8D,
-                    "slowed": GeneralEffectAction.EFFECT_SLOWED,
-                    "speed": GeneralEffectAction.EFFECT_SPEED,
-                    "concert_hall": GeneralEffectAction.EFFECT_CONCERT_HALL
-                }
-                general_effect_type = mapping.get(effect_str)
-
-            if call.message.video:
-                meida_type = MediaType.VIDEO
-            elif call.message.audio:
-                meida_type = MediaType.AUDIO
-            elif call.message.voice:
-                meida_type = MediaType.VOICE
-            else:
-                await call.message.answer(_("Media type not found"))
-                return
-
-            out_put_media_path = await media_effect.media_effect(
-                effect_type=general_effect_type,
-                media_type=meida_type,
-            )
-
-            if not out_put_media_path or not await asyncio.to_thread(os.path.exists, out_put_media_path):
-                await call.message.answer(_("Error in processed media"))
-                return
-
-            if meida_type == MediaType.VIDEO:
-                await call.message.answer_video(
-                    FSInputFile(out_put_media_path),
-                    caption=_("Downloaded by"),
-                    title="effect video"
-                )
-                effect_sent = True
-            else:
-                audio_title = None
-                if call.message.audio and getattr(call.message.audio, "title", None):
-                    audio_title = call.message.audio.title
-
-                effect_name = effect_str or (general_effect_type.value if general_effect_type else "")
-                title_text = f"{audio_title} {effect_name} remix" if audio_title else f"voice {effect_name} remix"
-
-                sent = await call.message.answer_audio(
-                    audio=FSInputFile(out_put_media_path),
-                    caption=_("Downloaded by"),
-                    title=title_text,
-                    reply_markup=audio_keyboard(lang, file_id="placeholder", title=title_text, is_favorite=False)
-                )
-                real_file_id = sent.audio.file_id if sent and sent.audio else ""
-                if real_file_id:
-                    await sent.edit_reply_markup(
-                        reply_markup=audio_keyboard(lang, file_id=real_file_id, title=title_text, is_favorite=False)
-                    )
-                effect_sent = True
-
-            if effect_sent:
-                try:
-                    await call.message.delete()
-                except Exception:
-                    pass
-
+            general_effect_type = GeneralEffectAction(effect_str)
         except Exception as e:
-            print("ERROR in take_media_effect:", e)
+            print("ERROR", e)
+            mapping = {
+                "8d": GeneralEffectAction.EFFECT_8D,
+                "slowed": GeneralEffectAction.EFFECT_SLOWED,
+                "speed": GeneralEffectAction.EFFECT_SPEED,
+                "concert_hall": GeneralEffectAction.EFFECT_CONCERT_HALL,
+            }
+            general_effect_type = mapping.get(effect_str)
+
+        if call.message.video:
+            media_type = MediaType.VIDEO
+        elif call.message.audio:
+            media_type = MediaType.AUDIO
+        elif call.message.voice:
+            media_type = MediaType.VOICE
+        else:
+            await call.message.answer(_("Media type not found"))
+            return
+
+        out_put_media_path = await media_effect.media_effect(
+            effect_type=general_effect_type,
+            media_type=media_type,
+        )
+
+        if not out_put_media_path or not await asyncio.to_thread(os.path.exists, out_put_media_path):
             await call.message.answer(_("Error in processed media"))
-        finally:
-            await state.clear()
-            await loader.stop()
+            return
+
+        if media_type == MediaType.VIDEO:
+            await call.message.answer_video(
+                FSInputFile(out_put_media_path),
+                caption=_("Downloaded by"),
+                title="effect video",
+            )
+            effect_sent = True
+        else:
+            audio_title = None
+            if call.message.audio and getattr(call.message.audio, "title", None):
+                audio_title = call.message.audio.title
+
+            effect_name = effect_str or (general_effect_type.value if general_effect_type else "")
+            title_text = f"{audio_title} {effect_name} remix" if audio_title else f"voice {effect_name} remix"
+
+            sent = await call.message.answer_audio(
+                audio=FSInputFile(out_put_media_path),
+                caption=_("Downloaded by"),
+                title=title_text,
+                reply_markup=audio_keyboard(lang, file_id="placeholder", title=title_text, is_favorite=False),
+            )
+            real_file_id = sent.audio.file_id if sent and sent.audio else ""
+            if real_file_id:
+                await sent.edit_reply_markup(
+                    reply_markup=audio_keyboard(lang, file_id=real_file_id, title=title_text, is_favorite=False)
+                )
+            effect_sent = True
+
+        if effect_sent:
             try:
-                if out_put_media_path and await asyncio.to_thread(os.path.exists, out_put_media_path):
-                    await asyncio.to_thread(os.remove, out_put_media_path)
-            except Exception as ex:
-                print("Final cleanup error:", ex)
+                await call.message.delete()
+            except Exception:
+                pass
+
+    except Exception as e:
+        print("ERROR in take_media_effect:", e)
+        await call.message.answer(_("Error in processed media"))
+    finally:
+        await state.clear()
+        await loader.stop()
+        if out_put_media_path and await asyncio.to_thread(os.path.exists, out_put_media_path):
+            await asyncio.to_thread(os.remove, out_put_media_path)
 
 
 @media_downloader_router.message(SendMediaSG.send_media)
@@ -152,34 +162,34 @@ async def take_media(message: Message, state: FSMContext, bot: Bot, lang: str):
                 "8d": GeneralEffectAction.EFFECT_8D,
                 "slowed": GeneralEffectAction.EFFECT_SLOWED,
                 "speed": GeneralEffectAction.EFFECT_SPEED,
-                "concert_hall": GeneralEffectAction.EFFECT_CONCERT_HALL
+                "concert_hall": GeneralEffectAction.EFFECT_CONCERT_HALL,
             }
             general_effect_type = mapping.get(effect_str)
 
         if message.video:
-            meida_type = MediaType.VIDEO
+            media_type = MediaType.VIDEO
         elif message.audio:
-            meida_type = MediaType.AUDIO
+            media_type = MediaType.AUDIO
         elif message.voice:
-            meida_type = MediaType.VOICE
+            media_type = MediaType.VOICE
         else:
             await message.answer(_("Media type not found"))
             return
 
         out_put_media_path = await media_effect.media_effect(
             effect_type=general_effect_type,
-            media_type=meida_type,
+            media_type=media_type,
         )
 
         if not out_put_media_path or not await asyncio.to_thread(os.path.exists, out_put_media_path):
             await message.answer(_("Error in processed media"))
             return
 
-        if meida_type == MediaType.VIDEO:
+        if media_type == MediaType.VIDEO:
             await message.answer_video(
                 FSInputFile(out_put_media_path),
                 caption=_("Downloaded by"),
-                title="effect video"
+                title="effect video",
             )
         else:
             audio_title = None
@@ -193,7 +203,7 @@ async def take_media(message: Message, state: FSMContext, bot: Bot, lang: str):
                 audio=FSInputFile(out_put_media_path),
                 caption=_("Downloaded by"),
                 title=title_text,
-                reply_markup=audio_keyboard(lang, file_id="placeholder", title=title_text, is_favorite=False)
+                reply_markup=audio_keyboard(lang, file_id="placeholder", title=title_text, is_favorite=False),
             )
             real_file_id = sent.audio.file_id if sent and sent.audio else ""
             if real_file_id:
@@ -207,85 +217,70 @@ async def take_media(message: Message, state: FSMContext, bot: Bot, lang: str):
     finally:
         await state.clear()
         await loader.stop()
-        try:
-            if out_put_media_path and await asyncio.to_thread(os.path.exists, out_put_media_path):
-                await asyncio.to_thread(os.remove, out_put_media_path)
-        except Exception as ex:
-            print("Final cleanup error:", ex)
+        if out_put_media_path and await asyncio.to_thread(os.path.exists, out_put_media_path):
+            await asyncio.to_thread(os.remove, out_put_media_path)
 
+
+# ── Utilities ──────────────────────────────────────────────────────────
 
 async def cleanup_files(*file_paths):
     for path in file_paths:
         if path is None:
             continue
-
         if isinstance(path, (list, tuple)):
             for item in path:
                 if item:
                     try:
-                        item_str = str(item)
-                        exists = await asyncio.to_thread(os.path.exists, item_str)
-                        if exists:
-                            await asyncio.to_thread(os.remove, item_str)
+                        if await asyncio.to_thread(os.path.exists, str(item)):
+                            await asyncio.to_thread(os.remove, str(item))
                     except Exception as e:
                         print(f"ERROR: {e}")
         else:
-            if path:
-                try:
-                    path_str = str(path)
-                    exists = await asyncio.to_thread(os.path.exists, path_str)
-                    if exists:
-                        await asyncio.to_thread(os.remove, path_str)
-                except Exception as e:
-                    print(f"ERROR: {e}")
+            try:
+                if await asyncio.to_thread(os.path.exists, str(path)):
+                    await asyncio.to_thread(os.remove, str(path))
+            except Exception as e:
+                print(f"ERROR: {e}")
 
 
 async def cleanup_post_paths(post_paths):
     if not post_paths:
         return
-
     for post in post_paths:
         if isinstance(post, dict):
             media_path = post.get("media_path")
             if isinstance(media_path, str):
                 await cleanup_files(media_path)
-
         elif isinstance(post, list):
             for item in post:
-                if not isinstance(item, dict):
-                    continue
-
-                media_path = item.get("media_path")
-                if isinstance(media_path, str):
-                    await cleanup_files(media_path)
+                if isinstance(item, dict):
+                    media_path = item.get("media_path")
+                    if isinstance(media_path, str):
+                        await cleanup_files(media_path)
 
 
 async def send_cached_media(message: Message, cached_media: List[Dict], lang: str, _, settings: Settings) -> bool:
     try:
         if len(cached_media) == 1:
             media = cached_media[0]
-            if media['type'] == 'photo':
-                await message.reply_photo(
-                    photo=media['file_id'],
-                    caption=_("Downloaded by")
-                )
+            if media["type"] == "photo":
+                await message.reply_photo(photo=media["file_id"], caption=_("Downloaded by"))
             else:
                 await message.reply_video(
-                    video=media['file_id'],
+                    video=media["file_id"],
                     reply_markup=video_keyboards(lang),
-                    caption=_("Downloaded by")
+                    caption=_("Downloaded by"),
                 )
         else:
             for media in cached_media:
-                if media['type'] == 'photo':
-                    await message.reply_photo(media['file_id'], caption=_("Downloaded by"))
+                if media["type"] == "photo":
+                    await message.reply_photo(media["file_id"], caption=_("Downloaded by"))
                 else:
                     await message.reply_video(
-                        media['file_id'],
+                        media["file_id"],
                         caption=_("Downloaded by"),
-                        reply_markup=video_keyboards(lang)
+                        reply_markup=video_keyboards(lang),
                     )
-
         return True
     except Exception as e:
         print(f"❌ Keshdan yuborishda xato: {e}")
@@ -294,7 +289,9 @@ async def send_cached_media(message: Message, cached_media: List[Dict], lang: st
         return False
 
 
-# Local Bot API server supports up to 2 GB — no file size check needed here.
+# ── Main message handler ───────────────────────────────────────────────
+# Local Bot API server supports up to 2 GB — no file size check needed.
+
 @media_downloader_router.message(F.text | F.video | F.video_note | F.voice | F.audio)
 async def all_downloader_(message: Message, lang: str, settings: Settings):
     _ = get_translator(lang).gettext
@@ -327,51 +324,33 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                     if info.url_type == URLType.INSTAGRAM_HIGHLIGHT:
                         loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                         await loader.start()
-                        urls = await downloader.instagram_downloaders(
-                            message.text, InstagramMediaType.HIGHLIGHT
-                        )
-
+                        urls = await downloader.instagram_downloaders(message.text, InstagramMediaType.HIGHLIGHT)
                         if urls:
                             for media in urls:
                                 url = media.get("url")
                                 media_type = media.get("type")
-
                                 if media_type == "photo":
                                     await message.reply_photo(url, caption=_("Downloaded by"))
                                 elif media_type == "video":
-                                    await message.reply_video(
-                                        url,
-                                        reply_markup=video_keyboards(lang),
-                                        caption=_("Downloaded by")
-                                    )
+                                    await message.reply_video(url, reply_markup=video_keyboards(lang), caption=_("Downloaded by"))
 
                     elif info.url_type == URLType.INSTAGRAM_STORIES:
                         loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                         await loader.start()
-                        urls = await downloader.instagram_downloaders(
-                            message.text, InstagramMediaType.STORIES
-                        )
-
+                        urls = await downloader.instagram_downloaders(message.text, InstagramMediaType.STORIES)
                         if urls:
                             for media in urls:
                                 url = media.get("url")
                                 media_type = media.get("type")
-
                                 if media_type == "photo":
                                     await message.reply_photo(url, caption=_("Downloaded by"))
                                 elif media_type == "video":
-                                    await message.reply_video(
-                                        url,
-                                        reply_markup=video_keyboards(lang),
-                                        caption=_("Downloaded by")
-                                    )
+                                    await message.reply_video(url, reply_markup=video_keyboards(lang), caption=_("Downloaded by"))
 
                     elif info.url_type == URLType.INSTAGRAM_POST:
                         loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                         await loader.start()
-                        post_paths = await downloader.instagram_downloaders(
-                            message.text, InstagramMediaType.POST
-                        )
+                        post_paths = await downloader.instagram_downloaders(message.text, InstagramMediaType.POST)
 
                         if not post_paths:
                             await loader.stop()
@@ -383,133 +362,74 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                         for post in post_paths:
                             if not post:
                                 continue
-
                             if isinstance(post, list):
                                 for media in post:
                                     media_path = media.get("media_path")
                                     media_type = media.get("type")
                                     if not media_path or not await asyncio.to_thread(os.path.exists, media_path):
                                         continue
-
                                     if media_type == "video":
-                                        sent = await message.reply_video(
-                                            video=FSInputFile(media_path),
-                                            caption=_("Downloaded by"),
-                                            reply_markup=video_keyboards(lang)
-                                        )
-                                        media_to_cache.append({'type': 'video', 'file_id': sent.video.file_id})
+                                        sent = await message.reply_video(video=FSInputFile(media_path), caption=_("Downloaded by"), reply_markup=video_keyboards(lang))
+                                        media_to_cache.append({"type": "video", "file_id": sent.video.file_id})
                                     elif media_type == "photo":
-                                        sent = await message.reply_photo(
-                                            photo=FSInputFile(media_path),
-                                            caption=_("Downloaded by")
-                                        )
-                                        media_to_cache.append({'type': 'photo', 'file_id': sent.photo[-1].file_id})
-
+                                        sent = await message.reply_photo(photo=FSInputFile(media_path), caption=_("Downloaded by"))
+                                        media_to_cache.append({"type": "photo", "file_id": sent.photo[-1].file_id})
                             elif isinstance(post, dict):
                                 media_path = post.get("media_path")
                                 media_type = post.get("type")
-
                                 if not media_path or not await asyncio.to_thread(os.path.exists, media_path):
                                     continue
-
                                 if media_type == "video":
-                                    sent = await message.reply_video(
-                                        video=FSInputFile(media_path),
-                                        caption=_("Downloaded by"),
-                                        reply_markup=video_keyboards(lang)
-                                    )
-                                    media_to_cache.append({'type': 'video', 'file_id': sent.video.file_id})
+                                    sent = await message.reply_video(video=FSInputFile(media_path), caption=_("Downloaded by"), reply_markup=video_keyboards(lang))
+                                    media_to_cache.append({"type": "video", "file_id": sent.video.file_id})
                                 elif media_type == "photo":
-                                    sent = await message.reply_photo(
-                                        photo=FSInputFile(media_path),
-                                        caption=_("Downloaded by")
-                                    )
-                                    media_to_cache.append({'type': 'photo', 'file_id': sent.photo[-1].file_id})
+                                    sent = await message.reply_photo(photo=FSInputFile(media_path), caption=_("Downloaded by"))
+                                    media_to_cache.append({"type": "photo", "file_id": sent.photo[-1].file_id})
 
                         if media_to_cache:
                             await cache_media(message.text, media_to_cache, settings)
 
-                    elif info.url_type in [
-                        URLType.INSTAGRAM_REEL,
-                        URLType.INSTAGRAM_IGTV,
-                        URLType.INSTAGRAM_CDN_VIDEO
-                    ]:
+                    elif info.url_type in [URLType.INSTAGRAM_REEL, URLType.INSTAGRAM_IGTV, URLType.INSTAGRAM_CDN_VIDEO]:
                         loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                         await loader.start()
-                        video_path = await downloader.instagram_downloaders(
-                            message.text, InstagramMediaType.REELS
-                        )
-
+                        video_path = await downloader.instagram_downloaders(message.text, InstagramMediaType.REELS)
                         if video_path and await asyncio.to_thread(os.path.exists, str(video_path)):
-                            sent = await message.reply_video(
-                                FSInputFile(str(video_path)),
-                                reply_markup=video_keyboards(lang),
-                                caption=_("Downloaded by")
-                            )
-                            await cache_media(message.text, [{'type': 'video', 'file_id': sent.video.file_id}], settings)
+                            sent = await message.reply_video(FSInputFile(str(video_path)), reply_markup=video_keyboards(lang), caption=_("Downloaded by"))
+                            await cache_media(message.text, [{"type": "video", "file_id": sent.video.file_id}], settings)
 
-                    elif info.url_type in [
-                        URLType.INSTAGRAM_PROFILE_PHOTO,
-                        URLType.INSTAGRAM_CDN_PHOTO
-                    ]:
+                    elif info.url_type in [URLType.INSTAGRAM_PROFILE_PHOTO, URLType.INSTAGRAM_CDN_PHOTO]:
                         loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                         await loader.start()
-                        photo_path = await downloader.instagram_downloaders(
-                            message.text, InstagramMediaType.PROFILE_PHOTO
-                        )
-
+                        photo_path = await downloader.instagram_downloaders(message.text, InstagramMediaType.PROFILE_PHOTO)
                         if photo_path and await asyncio.to_thread(os.path.exists, str(photo_path)):
-                            sent = await message.reply_photo(
-                                FSInputFile(str(photo_path)),
-                                caption=_("Downloaded by")
-                            )
-                            await cache_media(message.text, [{'type': 'photo', 'file_id': sent.photo[-1].file_id}], settings)
+                            sent = await message.reply_photo(FSInputFile(str(photo_path)), caption=_("Downloaded by"))
+                            await cache_media(message.text, [{"type": "photo", "file_id": sent.photo[-1].file_id}], settings)
 
                     else:
                         await message.answer(_("Wrong url"))
 
                 elif info.platform == "youtube":
-                    if info.url_type in [
-                        URLType.YOUTUBE_VIDEO,
-                        URLType.YOUTUBE_SHORTS,
-                        URLType.YOUTUBE_LIVE,
-                        URLType.YOUTUBE_CDN_VIDEO
-                    ]:
+                    if info.url_type in [URLType.YOUTUBE_VIDEO, URLType.YOUTUBE_SHORTS, URLType.YOUTUBE_LIVE, URLType.YOUTUBE_CDN_VIDEO]:
                         loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                         await loader.start()
                         url_to_download = info.clean_url or message.text
                         if "&list=" in url_to_download:
                             url_to_download = url_to_download.split("&")[0]
-
                         video_path = await downloader.youtube_downloaders(url_to_download)
-
                         if video_path and await asyncio.to_thread(os.path.exists, str(video_path)):
-                            sent = await message.reply_video(
-                                FSInputFile(str(video_path)),
-                                reply_markup=video_keyboards(lang),
-                                caption=_("Downloaded by")
-                            )
-                            await cache_media(message.text, [{'type': 'video', 'file_id': sent.video.file_id}], settings)
+                            sent = await message.reply_video(FSInputFile(str(video_path)), reply_markup=video_keyboards(lang), caption=_("Downloaded by"))
+                            await cache_media(message.text, [{"type": "video", "file_id": sent.video.file_id}], settings)
                     else:
                         await message.answer(_("Wrong url"))
 
                 elif info.platform == "tiktok":
-                    if info.url_type in [
-                        URLType.TIKTOK_VIDEO,
-                        URLType.TIKTOK_PHOTO,
-                        URLType.TIKTOK_CDN_VIDEO
-                    ]:
+                    if info.url_type in [URLType.TIKTOK_VIDEO, URLType.TIKTOK_PHOTO, URLType.TIKTOK_CDN_VIDEO]:
                         loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                         await loader.start()
                         video_path = await downloader.tiktok_downloaders(message.text)
-
                         if video_path and await asyncio.to_thread(os.path.exists, str(video_path)):
-                            sent = await message.reply_video(
-                                FSInputFile(str(video_path)),
-                                reply_markup=video_keyboards(lang),
-                                caption=_("Downloaded by")
-                            )
-                            await cache_media(message.text, [{'type': 'video', 'file_id': sent.video.file_id}], settings)
+                            sent = await message.reply_video(FSInputFile(str(video_path)), reply_markup=video_keyboards(lang), caption=_("Downloaded by"))
+                            await cache_media(message.text, [{"type": "video", "file_id": sent.video.file_id}], settings)
                     else:
                         await message.answer(_("Wrong url"))
 
@@ -517,24 +437,19 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                     loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                     await loader.start()
                     video_path = await downloader.vk_downloaders(message.text)
-
                     if video_path and await asyncio.to_thread(os.path.exists, str(video_path)):
-                        sent = await message.reply_video(
-                            FSInputFile(str(video_path)),
-                            reply_markup=video_keyboards(lang),
-                            caption=_("Downloaded by")
-                        )
-                        await cache_media(message.text, [{'type': 'video', 'file_id': sent.video.file_id}], settings)
+                        sent = await message.reply_video(FSInputFile(str(video_path)), reply_markup=video_keyboards(lang), caption=_("Downloaded by"))
+                        await cache_media(message.text, [{"type": "video", "file_id": sent.video.file_id}], settings)
 
                 else:
                     await message.answer(_("Wrong url"))
 
             else:
+                # Music text search
                 loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                 await loader.start()
                 music_list, music_title, thumbnail_path = await downloader.music_downloaders(
-                    MusicAction.SEARCH_BY_TEXT,
-                    some_data=message.text
+                    MusicAction.SEARCH_BY_TEXT, some_data=message.text
                 )
 
                 if music_list:
@@ -542,13 +457,13 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                         await message.reply_photo(
                             photo=FSInputFile(thumbnail_path),
                             caption=music_title,
-                            reply_markup=music_keyboards(music_list)
+                            reply_markup=music_keyboards(music_list),
                         )
                     else:
-                        await message.reply(
-                            text=music_title,
-                            reply_markup=music_keyboards(music_list)
-                        )
+                        await message.reply(text=music_title, reply_markup=music_keyboards(music_list))
+
+                    # Prefetch top-2 tracks in background so they are ready when user clicks
+                    _prefetch_top(music_list)
 
         elif message.video or message.video_note or message.audio or message.voice:
             loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
@@ -566,8 +481,7 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
 
             if media_type:
                 music_list, music_title, thumbnail_path = await downloader.music_downloaders(
-                    MusicAction.SEARCH_BY_MEDIA,
-                    media_type=media_type
+                    MusicAction.SEARCH_BY_MEDIA, media_type=media_type
                 )
 
                 if music_list:
@@ -575,30 +489,28 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                         await message.reply_photo(
                             photo=FSInputFile(thumbnail_path),
                             caption=music_title,
-                            reply_markup=music_keyboards(music_list)
+                            reply_markup=music_keyboards(music_list),
                         )
                     else:
-                        await message.reply(
-                            text=music_title,
-                            reply_markup=music_keyboards(music_list)
-                        )
+                        await message.reply(text=music_title, reply_markup=music_keyboards(music_list))
+
+                    # Prefetch top-2 tracks in background
+                    _prefetch_top(music_list)
 
     except Exception as e:
         print(f"ERROR: {e}")
         await message.answer(_("Error in loading"))
-
     finally:
         if loader:
             await loader.stop()
-
         await cleanup_files(video_path, photo_path, thumbnail_path)
-
         if highlights_path:
             await cleanup_files(highlights_path)
-
         if post_paths:
             await cleanup_post_paths(post_paths)
 
+
+# ── Music search results callbacks ────────────────────────────────────
 
 @media_downloader_router.callback_query(SearchMusicInVideoCD.filter())
 async def send_music_results_from_video(call: CallbackQuery, lang: str):
@@ -609,8 +521,7 @@ async def send_music_results_from_video(call: CallbackQuery, lang: str):
     thumbnail_path = None
     try:
         musics_list, music_title, thumbnail_path = await all_downloader.music_downloaders(
-            actions=MusicAction.SEARCH_BY_MEDIA,
-            media_type=MediaType.VIDEO
+            actions=MusicAction.SEARCH_BY_MEDIA, media_type=MediaType.VIDEO
         )
 
         if musics_list:
@@ -618,13 +529,13 @@ async def send_music_results_from_video(call: CallbackQuery, lang: str):
                 await call.message.reply_photo(
                     photo=FSInputFile(thumbnail_path),
                     caption=music_title,
-                    reply_markup=music_keyboards(musics_list)
+                    reply_markup=music_keyboards(musics_list),
                 )
             else:
-                await call.message.reply(
-                    text=music_title,
-                    reply_markup=music_keyboards(musics_list)
-                )
+                await call.message.reply(text=music_title, reply_markup=music_keyboards(musics_list))
+
+            # Prefetch top-2 tracks in background
+            _prefetch_top(musics_list)
         else:
             await call.message.answer(_("Error in loading music"))
     except Exception as e:
@@ -638,55 +549,59 @@ async def send_music_results_from_video(call: CallbackQuery, lang: str):
 
 @media_downloader_router.callback_query(MusicCD.filter())
 async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD, lang: str, settings: Settings):
-    """Download and send a track. Uses Redis file_id cache for instant delivery."""
+    """
+    Download and send a track.
+    Priority:
+      1. Redis file_id cache  → instant re-send (Telegram serves from CDN)
+      2. In-process prefetch  → near-instant (file already downloaded in background)
+      3. Fresh download       → normal yt-dlp path
+    """
     _ = get_translator(lang).gettext
     video_id = callback_data.video_id
 
+    # ── Layer 1: Redis file_id cache ──────────────────────────────────
     cached_fid = await get_cached_audio_file_id(video_id, settings)
     if cached_fid:
         try:
             await call.message.reply_audio(
                 audio=cached_fid,
                 caption=_("Downloaded by"),
-                reply_markup=audio_keyboard(lang, file_id=cached_fid, title="", is_favorite=False)
+                reply_markup=audio_keyboard(lang, file_id=cached_fid, title="", is_favorite=False),
             )
             return
         except Exception:
-            pass
+            pass  # file_id may have expired; fall through to download
 
     loader = AnimatedLoader(call.message, DOWNLOAD_FRAMES)
     await loader.start()
-    download_music = AllDownloader()
     music_path = None
+    title = ""
+
     try:
-        music_path, title = await download_music.music_downloaders(
-            actions=MusicAction.DOWNLOAD,
-            some_data=video_id
-        )
+        # ── Layer 2: prefetch cache ───────────────────────────────────
+        prefetched = await _music_downloader.wait_and_consume(video_id, timeout=30.0)
+        if prefetched:
+            music_path, title = prefetched
+        else:
+            # ── Layer 3: fresh download ───────────────────────────────
+            result = await _music_downloader.download_music_from_youtube(video_id)
+            if result:
+                music_path, title = result
 
         if music_path and await asyncio.to_thread(os.path.exists, music_path):
             sent = await call.message.reply_audio(
                 audio=FSInputFile(music_path),
                 title=title,
                 caption=_("Downloaded by"),
-                reply_markup=audio_keyboard(
-                    lang,
-                    file_id="placeholder",
-                    title=title or "",
-                    is_favorite=False
-                )
+                reply_markup=audio_keyboard(lang, file_id="placeholder", title=title or "", is_favorite=False),
             )
             real_file_id = sent.audio.file_id if sent and sent.audio else ""
             if real_file_id:
                 await cache_audio_file_id(video_id, real_file_id, settings)
                 await sent.edit_reply_markup(
-                    reply_markup=audio_keyboard(
-                        lang,
-                        file_id=real_file_id,
-                        title=title or "",
-                        is_favorite=False
-                    )
+                    reply_markup=audio_keyboard(lang, file_id=real_file_id, title=title or "", is_favorite=False)
                 )
+
     except Exception as e:
         print("ERROR in send_music_search_results:", e)
         await call.message.answer(text=_("Error in loading music"))
@@ -705,8 +620,7 @@ async def send_music_by_name(call: CallbackQuery, lang: str, callback_data: TopP
     thumbnail_path = None
     try:
         music_list, music_title, thumbnail_path = await downloader.music_downloaders(
-            MusicAction.SEARCH_BY_TEXT,
-            some_data=callback_data.music_name
+            MusicAction.SEARCH_BY_TEXT, some_data=callback_data.music_name
         )
 
         if music_list:
@@ -714,13 +628,14 @@ async def send_music_by_name(call: CallbackQuery, lang: str, callback_data: TopP
                 await call.message.reply_photo(
                     photo=FSInputFile(thumbnail_path),
                     caption=music_title,
-                    reply_markup=music_keyboards(music_list)
+                    reply_markup=music_keyboards(music_list),
                 )
             else:
-                await call.message.reply(
-                    text=music_title,
-                    reply_markup=music_keyboards(music_list)
-                )
+                await call.message.reply(text=music_title, reply_markup=music_keyboards(music_list))
+
+            # Prefetch top-2 tracks in background
+            _prefetch_top(music_list)
+
     except Exception as e:
         print("ERROR in send_music_by_name:", e)
         await call.message.answer(_("Error in loading music"))
@@ -741,10 +656,7 @@ async def send_video_mp3_audio_version(call: CallbackQuery, lang: str, bot: Bot)
 
     try:
         # Use bot.download() — routes through http://127.0.0.1:8081, no 20 MB cap
-        await bot.download(
-            file=call.message.video.file_id,
-            destination=video_path,
-        )
+        await bot.download(file=call.message.video.file_id, destination=video_path)
 
         audio_path = await downloader_audio.extract_video_to_audio(video_path)
 
@@ -752,23 +664,17 @@ async def send_video_mp3_audio_version(call: CallbackQuery, lang: str, bot: Bot)
             sent = await call.message.answer_audio(
                 FSInputFile(audio_path),
                 caption=_("Downloaded by"),
-                title="mp3"
+                title="mp3",
             )
             real_file_id = sent.audio.file_id if sent and sent.audio else ""
             if real_file_id:
                 await sent.edit_reply_markup(
-                    reply_markup=audio_keyboard(
-                        lang,
-                        file_id=real_file_id,
-                        title="mp3",
-                        is_favorite=False
-                    )
+                    reply_markup=audio_keyboard(lang, file_id=real_file_id, title="mp3", is_favorite=False)
                 )
 
     except Exception as e:
         print("ERROR in send_video_mp3_audio_version:", e)
         await call.message.answer(text=_("Error in loading audio"))
-
     finally:
         await loader.stop()
         for file in [audio_path, video_path]:
@@ -788,10 +694,7 @@ async def audio_effects(call: CallbackQuery, lang: str):
         await call.message.answer_audio(
             audio_file_id,
             caption=_("Choose effect"),
-            reply_markup=auido_effect_kbd(
-                actions="for_downloading_audio",
-                lang=lang
-            )
+            reply_markup=auido_effect_kbd(actions="for_downloading_audio", lang=lang),
         )
     except Exception as e:
         print("ERROR", e)
