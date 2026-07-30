@@ -40,24 +40,28 @@ def _top_header(region: str, period: str) -> str:
     )
 
 def _favorites_keyboard(favorites: list, page: int = 1) -> InlineKeyboardMarkup:
-    """Build paginated inline keyboard for favorite tracks."""
+    """Build paginated inline keyboard for favorite tracks.
+
+    callback_data stores the 0-based global index of the track in the full
+    favorites list so we never put a file_id into callback_data (Telegram
+    limits callback_data to 64 bytes and file_ids are longer).
+    """
     total = len(favorites)
     total_pages = max(1, (total + _FAV_PAGE_SIZE - 1) // _FAV_PAGE_SIZE)
     start = (page - 1) * _FAV_PAGE_SIZE
     end = start + _FAV_PAGE_SIZE
-    sliced = favorites[start:end]
 
     inline_keyboard = []
 
-    for i, fav in enumerate(sliced, start=start + 1):
-        title = fav.get("title") or fav["title"] if isinstance(fav, dict) else (fav[1] if len(fav) > 1 else "Track")
-        file_id = fav.get("file_id") or fav["file_id"] if isinstance(fav, dict) else fav[0]
-        label = f"{'❤️'} {i}. {title}"
+    for global_idx in range(start, min(end, total)):
+        fav = favorites[global_idx]
+        title = fav.get("title") if isinstance(fav, dict) else (fav[1] if len(fav) > 1 else "Track")
+        label = f"❤️ {global_idx + 1}. {title or 'Track'}"
         if len(label) > 60:
             label = label[:57] + "..."
-        # "fav_play:" is 9 chars, so limit file_id to 55 chars to stay within Telegram's 64-byte limit
+        # Store global index — safe, always fits in 64 bytes (e.g. "fav_play:9999")
         inline_keyboard.append([
-            InlineKeyboardButton(text=label, callback_data=f"fav_play:{file_id[:55]}")
+            InlineKeyboardButton(text=label, callback_data=f"fav_play:{global_idx}")
         ])
 
     # Navigation
@@ -122,7 +126,6 @@ async def handled_command_my(message: Message, lang: str, pool: asyncpg.Pool):
         )
         return
 
-    # Convert asyncpg Records to dicts
     fav_list = [{"file_id": r["file_id"], "title": r["title"]} for r in favorites]
 
     await message.answer(
@@ -135,7 +138,6 @@ async def handled_command_my(message: Message, lang: str, pool: asyncpg.Pool):
 @user_commands_router.callback_query(F.data.startswith("fav_page:"))
 async def fav_page_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Pool):
     """Paginate favorites list."""
-    _ = get_translator(lang).gettext
     db = FavoritesDataBaseActions(pool)
     tg_id = callback.from_user.id
 
@@ -158,21 +160,37 @@ async def fav_page_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Poo
     await callback.answer()
 
 @user_commands_router.callback_query(F.data.startswith("fav_play:"))
-async def fav_play_handler(callback: CallbackQuery, lang: str):
-    """Send favorite track by file_id instantly."""
+async def fav_play_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Pool):
+    """Send favorite track — looks up full file_id from DB by index."""
     _ = get_translator(lang).gettext
-    file_id = callback.data.replace("fav_play:", "", 1)
+    tg_id = callback.from_user.id
+
+    _, idx_s = callback.data.split(":")
+    idx = int(idx_s)
+
+    db = FavoritesDataBaseActions(pool)
+    favorites = await db.get_favorites(tg_id)
+
+    if idx < 0 or idx >= len(favorites):
+        await callback.answer("Trek topilmadi. Ro'yxat yangilandi.", show_alert=True)
+        return
+
+    row = favorites[idx]
+    file_id: str = row["file_id"]
+    title: str = row["title"] or ""
 
     try:
         from src.app.keyboards.inline import audio_keyboard
         await callback.message.reply_audio(
             audio=file_id,
             caption=_("Downloaded by"),
-            reply_markup=audio_keyboard(lang, file_id=file_id, title="", is_favorite=True)
+            reply_markup=audio_keyboard(lang, file_id=file_id, title=title, is_favorite=True)
         )
     except Exception as e:
         print("ERROR in fav_play_handler:", e)
         await callback.answer("Trekni yuborishda xatolik. Qayta qo'shing.", show_alert=True)
+
+    await callback.answer()
 
 @user_commands_router.callback_query(TopFilterCD.filter())
 async def top_filter_handler(callback: CallbackQuery, callback_data: TopFilterCD, lang: str):
@@ -196,7 +214,6 @@ async def top_filter_handler(callback: CallbackQuery, callback_data: TopFilterCD
             reply_markup=kb
         )
     except TelegramBadRequest:
-        # Message content is identical (user tapped same filter) — ignore
         pass
 
     await callback.answer()
