@@ -18,28 +18,30 @@ async def handle_favorite(call: CallbackQuery, callback_data: FavoriteCD, lang: 
     tg_id = call.from_user.id
 
     if not call.message.audio:
-        await call.answer(_("Error"))
+        await call.answer(_(\"Error\"))
         return
 
     file_id = call.message.audio.file_id
-    title = call.message.audio.title or ""
+    title = call.message.audio.title or \"\"
 
-    if callback_data.action == "add":
+    if callback_data.action == \"add\":
         await db.add_favorite(tg_id, file_id, title)
-        await call.answer(_("Added to favorites") + " ❤️")
+        # Show ❤️ as active, 🤍 stays for removing
+        await call.answer(_(\"Added to favorites\") + \" ❤️\")
         try:
             await call.message.edit_reply_markup(
                 reply_markup=audio_keyboard(lang, file_id=file_id, title=title, is_favorite=True)
             )
         except TelegramBadRequest:
-            pass  # message already has this markup
+            pass
 
-    elif callback_data.action == "remove":
+    elif callback_data.action == \"remove\":
         await db.remove_favorite(tg_id, file_id)
-        await call.answer(_("Removed from favorites") + " 🤍")
+        # Show ❤ as inactive, 🤍 for adding back
+        await call.answer(_(\"Removed from favorites\") + \" 🤍\")
         try:
             await call.message.edit_reply_markup(
                 reply_markup=audio_keyboard(lang, file_id=file_id, title=title, is_favorite=False)
             )
         except TelegramBadRequest:
-            pass  # message already has this markup
+            pass
