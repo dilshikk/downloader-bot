@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Optional
 
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -74,7 +73,8 @@ def build_top_keyboard(
     if nav:
         builder.row(*nav)
 
-    builder.row(InlineKeyboardButton(text="❌", callback_data="close"))
+    # Close button — separate row at the bottom
+    builder.row(InlineKeyboardButton(text="❌", callback_data="top_close"))
     return builder.as_markup()
 
 
@@ -83,7 +83,7 @@ def build_top_keyboard(
 def build_top_text(songs: list[dict], page: int) -> str:
     start = page * PAGE_SIZE
     chunk = songs[start: start + PAGE_SIZE]
-    lines = ["<b>🎵 TOP Popular Songs</b>", ""]
+    lines = ["🎵 <b>TOP Popular Songs</b>", ""]
     for i, track in enumerate(chunk, start=start + 1):
         artist = track.get("artist", "Unknown")
         title = track.get("title", "Unknown")
@@ -159,6 +159,12 @@ async def handle_region_switch(callback: CallbackQuery):
 async def handle_page_switch(callback: CallbackQuery):
     _, region_code, page_str = callback.data.split(":")
     await render_chart(callback, region_code, int(page_str), is_edit=True)
+    await callback.answer()
+
+
+@user_commands_router.callback_query(F.data == "top_close")
+async def handle_top_close(callback: CallbackQuery):
+    await callback.message.delete()
     await callback.answer()
 
 
