@@ -98,6 +98,17 @@ class AllDownloader:
             await self.message.answer(self._("Error in loading file"))
         return file_path
 
+    async def _download_with_drm_fallback(
+        self, video_id: str, title: str
+    ) -> Optional[tuple[str, str]]:
+        """Try video_id first. On DRM → fallback to yt-dlp ytsearch by title."""
+        result = await self.music_downloader.download_music_from_youtube(video_id)
+        if result:
+            return result
+        # DRM or error — try by title query (yt-dlp picks non-DRM result)
+        print(f"Falling back to title search for: {title!r}")
+        return await self.music_downloader.download_music_by_query(title)
+
     async def music_downloaders(
         self,
         actions: MusicAction,
@@ -136,7 +147,7 @@ class AllDownloader:
                     if not title:
                         continue
                     duration = music_data.get("duration") or "0:00"
-                    # Skip very long tracks (>10 min), keep everything else
+                    # Skip very long tracks (>10 min)
                     if _safe_minutes(duration) >= 10:
                         continue
                     musics_list.append(music_data)
@@ -151,7 +162,14 @@ class AllDownloader:
 
             # ── DOWNLOAD ──────────────────────────────────────────────────────
             if actions == MusicAction.DOWNLOAD:
-                result = await self.music_downloader.download_music_from_youtube(some_data)
+                # some_data may be a single video_id or "video_id|||title" pair
+                if "|||" in str(some_data):
+                    video_id, track_title = some_data.split("|||", 1)
+                else:
+                    video_id = some_data
+                    track_title = some_data  # use as search query if DRM
+
+                result = await self._download_with_drm_fallback(video_id, track_title)
                 if not result:
                     await self.message.answer(self._("Error in loading music"))
                     return None
