@@ -747,20 +747,13 @@ async def send_video_mp3_audio_version(call: CallbackQuery, lang: str, bot: Bot)
     audio_path = None
 
     try:
-        file = await bot.get_file(call.message.video.file_id)
-        file_info = await bot.get_file(file.file_id)
-
-        async with aiohttp.ClientSession() as session:
-            url = f"https://api.telegram.org/bot{call.message.bot.token}/getFile?file_id={file_info.file_id}"
-            async with session.get(url) as resp:
-                file_info = await resp.json()
-                file_path = file_info['result']['file_path']
-
-            file_url = f"https://api.telegram.org/file/bot{call.message.bot.token}/{file_path}"
-            async with session.get(file_url) as response:
-                if response.status == 200:
-                    async with aiofiles.open(video_path, "wb") as f:
-                        await f.write(await response.read())
+        # Use bot.download() — it routes through the configured API server
+        # (local http://127.0.0.1:8081 or cloud), so no hardcoded URLs,
+        # no 20 MB cap, and no extra aiohttp session needed.
+        await bot.download(
+            file=call.message.video.file_id,
+            destination=video_path,
+        )
 
         audio_path = await downloader_audio.extract_video_to_audio(video_path)
 
