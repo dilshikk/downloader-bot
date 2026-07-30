@@ -17,6 +17,4 @@ urllib3
 faster_whisper
 pydub
 selenium
-# migrations
-alembic
-sqlalchemy[asyncio]
+ytmusicapi
