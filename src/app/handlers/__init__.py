@@ -7,6 +7,7 @@ from src.app.handlers.chek_sub_subscription import check_channel_sub_router
 from src.app.handlers.start import start_router
 from src.app.handlers.user.commands import user_commands_router
 from src.app.handlers.user.favorites import favorites_router
+from src.app.handlers.user.inline_share import inline_share_router
 from src.app.handlers.user.language_selection import language_selection_router
 from src.app.handlers.user.media_downloader import media_downloader_router
 
@@ -20,6 +21,7 @@ def register_all_router(dp: Dispatcher, settings: Settings):
     main_router.include_router(language_selection_router)
     main_router.include_router(user_commands_router)
     main_router.include_router(favorites_router)
+    main_router.include_router(inline_share_router)
     main_router.include_router(media_downloader_router)
 
     dp.include_router(main_router)
