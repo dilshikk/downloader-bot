@@ -17,6 +17,7 @@ from src.app.services.media_downloaders.all_downloader import AllDownloader
 from src.app.services.media_downloaders.utils.files import get_video_file_name
 from src.app.services.media_effects.media_effects import MediaEffects
 from src.app.states.user.media_effect import SendMediaSG
+from src.app.utils.animated_loader import AnimatedLoader, EFFECT_FRAMES, DOWNLOAD_FRAMES
 from src.app.utils.enums.audio import MusicAction
 from src.app.utils.enums.general import GeneralEffectAction, MediaType
 from src.app.utils.enums.url import URLType
@@ -35,7 +36,8 @@ async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, 
         await state.set_state(SendMediaSG.send_media)
         await call.message.edit_text(_("Send media"))
     else:
-        load_msg = await call.message.answer(_("Is being processed"))
+        loader = AnimatedLoader(call.message, EFFECT_FRAMES)
+        await loader.start()
         media_effect = MediaEffects(message=call.message, bot=bot)
         out_put_media_path = None
 
@@ -102,22 +104,19 @@ async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, 
             await call.message.answer(_("Error in processed media"))
         finally:
             await state.clear()
+            await loader.stop()
             try:
                 if out_put_media_path and await asyncio.to_thread(os.path.exists, out_put_media_path):
                     await asyncio.to_thread(os.remove, out_put_media_path)
             except Exception as ex:
                 print("Final cleanup error:", ex)
-            if load_msg:
-                try:
-                    await load_msg.delete()
-                except Exception as e:
-                    print("ERROR deleting load_msg:", e)
 
 
 @media_downloader_router.message(SendMediaSG.send_media)
 async def take_media(message: Message, state: FSMContext, bot: Bot, lang: str):
     _ = get_translator(lang).gettext
-    load_msg = await message.answer(_("Is being processed"))
+    loader = AnimatedLoader(message, EFFECT_FRAMES)
+    await loader.start()
     media_effect = MediaEffects(message=message, bot=bot)
     data = await state.get_data()
     out_put_media_path = None
@@ -184,16 +183,12 @@ async def take_media(message: Message, state: FSMContext, bot: Bot, lang: str):
         await message.answer(_("Error in processed"))
     finally:
         await state.clear()
+        await loader.stop()
         try:
             if out_put_media_path and await asyncio.to_thread(os.path.exists, out_put_media_path):
                 await asyncio.to_thread(os.remove, out_put_media_path)
         except Exception as ex:
             print("Final cleanup error:", ex)
-        if load_msg:
-            try:
-                await load_msg.delete()
-            except Exception as e:
-                print("ERROR deleting load_msg:", e)
 
 
 async def cleanup_files(*file_paths):
@@ -265,9 +260,7 @@ async def send_cached_media(message: Message, cached_media: List[Dict], lang: st
                     await message.reply_video(
                         media['file_id'],
                         caption=_("Downloaded by"),
-                        reply_markup=video_keyboards(
-                            lang
-                        )
+                        reply_markup=video_keyboards(lang)
                     )
 
         return True
@@ -292,7 +285,7 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
     photo_path = None
     thumbnail_path = None
     highlights_path = None
-    load_msg = None
+    loader = None
     downloader = AllDownloader(message=message, lang=lang)
 
     try:
@@ -300,19 +293,21 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
             if message.text.startswith("https://"):
                 cached_media = await get_cached_media(message.text, settings)
                 if cached_media:
-                    cache_msg = await message.answer(_("Video is loading"))
+                    loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                    await loader.start()
                     success = await send_cached_media(message, cached_media, lang, _, settings)
-                    await cache_msg.delete()
+                    await loader.stop()
+                    loader = None
                     if success:
                         return
-                # ================================================
 
                 validator = SocialMediaURLValidator()
                 info = await asyncio.to_thread(validator.validate, message.text)
 
                 if info.platform == "instagram":
                     if info.url_type == URLType.INSTAGRAM_HIGHLIGHT:
-                        load_msg = await message.answer(_("Highlight is loading"))
+                        loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                        await loader.start()
                         urls = await downloader.instagram_downloaders(
                             message.text, InstagramMediaType.HIGHLIGHT
                         )
@@ -323,11 +318,7 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                 media_type = media.get("type")
 
                                 if media_type == "photo":
-                                    await message.reply_photo(
-                                        url,
-                                        caption=_("Downloaded by")
-                                    )
-
+                                    await message.reply_photo(url, caption=_("Downloaded by"))
                                 elif media_type == "video":
                                     await message.reply_video(
                                         url,
@@ -336,7 +327,8 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                     )
 
                     elif info.url_type == URLType.INSTAGRAM_STORIES:
-                        load_msg = await message.answer(_("Stories is loading"))
+                        loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                        await loader.start()
                         urls = await downloader.instagram_downloaders(
                             message.text, InstagramMediaType.STORIES
                         )
@@ -347,11 +339,7 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                 media_type = media.get("type")
 
                                 if media_type == "photo":
-                                    await message.reply_photo(
-                                        url,
-                                        caption=_("Downloaded by")
-                                    )
-
+                                    await message.reply_photo(url, caption=_("Downloaded by"))
                                 elif media_type == "video":
                                     await message.reply_video(
                                         url,
@@ -360,13 +348,16 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                     )
 
                     elif info.url_type == URLType.INSTAGRAM_POST:
-                        load_msg = await message.answer(_("Post is loading"))
+                        loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                        await loader.start()
                         post_paths = await downloader.instagram_downloaders(
                             message.text, InstagramMediaType.POST
                         )
 
                         if not post_paths:
-                            await load_msg.edit_text(_("Failed to download post."))
+                            await loader.stop()
+                            loader = None
+                            await message.answer(_("Failed to download post."))
                             return
 
                         media_to_cache = []
@@ -387,20 +378,13 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                             caption=_("Downloaded by"),
                                             reply_markup=video_keyboards(lang)
                                         )
-                                        media_to_cache.append({
-                                            'type': 'video',
-                                            'file_id': sent.video.file_id
-                                        })
-
+                                        media_to_cache.append({'type': 'video', 'file_id': sent.video.file_id})
                                     elif media_type == "photo":
                                         sent = await message.reply_photo(
                                             photo=FSInputFile(media_path),
                                             caption=_("Downloaded by")
                                         )
-                                        media_to_cache.append({
-                                            'type': 'photo',
-                                            'file_id': sent.photo[-1].file_id
-                                        })
+                                        media_to_cache.append({'type': 'photo', 'file_id': sent.photo[-1].file_id})
 
                             elif isinstance(post, dict):
                                 media_path = post.get("media_path")
@@ -415,20 +399,13 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                         caption=_("Downloaded by"),
                                         reply_markup=video_keyboards(lang)
                                     )
-                                    media_to_cache.append({
-                                        'type': 'video',
-                                        'file_id': sent.video.file_id
-                                    })
-
+                                    media_to_cache.append({'type': 'video', 'file_id': sent.video.file_id})
                                 elif media_type == "photo":
                                     sent = await message.reply_photo(
                                         photo=FSInputFile(media_path),
                                         caption=_("Downloaded by")
                                     )
-                                    media_to_cache.append({
-                                        'type': 'photo',
-                                        'file_id': sent.photo[-1].file_id
-                                    })
+                                    media_to_cache.append({'type': 'photo', 'file_id': sent.photo[-1].file_id})
 
                         if media_to_cache:
                             await cache_media(message.text, media_to_cache, settings)
@@ -438,7 +415,8 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                         URLType.INSTAGRAM_IGTV,
                         URLType.INSTAGRAM_CDN_VIDEO
                     ]:
-                        load_msg = await message.answer(_("Reels is loading"))
+                        loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                        await loader.start()
                         video_path = await downloader.instagram_downloaders(
                             message.text, InstagramMediaType.REELS
                         )
@@ -449,16 +427,14 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                 reply_markup=video_keyboards(lang),
                                 caption=_("Downloaded by")
                             )
-                            await cache_media(message.text, [{
-                                'type': 'video',
-                                'file_id': sent.video.file_id
-                            }], settings)
+                            await cache_media(message.text, [{'type': 'video', 'file_id': sent.video.file_id}], settings)
 
                     elif info.url_type in [
                         URLType.INSTAGRAM_PROFILE_PHOTO,
                         URLType.INSTAGRAM_CDN_PHOTO
                     ]:
-                        load_msg = await message.answer(_("Profile photo is loading"))
+                        loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                        await loader.start()
                         photo_path = await downloader.instagram_downloaders(
                             message.text, InstagramMediaType.PROFILE_PHOTO
                         )
@@ -468,10 +444,7 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                 FSInputFile(str(photo_path)),
                                 caption=_("Downloaded by")
                             )
-                            await cache_media(message.text, [{
-                                'type': 'photo',
-                                'file_id': sent.photo[-1].file_id
-                            }], settings)
+                            await cache_media(message.text, [{'type': 'photo', 'file_id': sent.photo[-1].file_id}], settings)
 
                     else:
                         await message.answer(_("Wrong url"))
@@ -483,7 +456,8 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                         URLType.YOUTUBE_LIVE,
                         URLType.YOUTUBE_CDN_VIDEO
                     ]:
-                        load_msg = await message.answer(_("Video is loading"))
+                        loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                        await loader.start()
                         url_to_download = info.clean_url or message.text
                         if "&list=" in url_to_download:
                             url_to_download = url_to_download.split("&")[0]
@@ -496,10 +470,7 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                 reply_markup=video_keyboards(lang),
                                 caption=_("Downloaded by")
                             )
-                            await cache_media(message.text, [{
-                                'type': 'video',
-                                'file_id': sent.video.file_id
-                            }], settings)
+                            await cache_media(message.text, [{'type': 'video', 'file_id': sent.video.file_id}], settings)
                     else:
                         await message.answer(_("Wrong url"))
 
@@ -509,7 +480,8 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                         URLType.TIKTOK_PHOTO,
                         URLType.TIKTOK_CDN_VIDEO
                     ]:
-                        load_msg = await message.answer(_("Video is loading"))
+                        loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                        await loader.start()
                         video_path = await downloader.tiktok_downloaders(message.text)
 
                         if video_path and await asyncio.to_thread(os.path.exists, str(video_path)):
@@ -518,10 +490,7 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                                 reply_markup=video_keyboards(lang),
                                 caption=_("Downloaded by")
                             )
-                            await cache_media(message.text, [{
-                                'type': 'video',
-                                'file_id': sent.video.file_id
-                            }], settings)
+                            await cache_media(message.text, [{'type': 'video', 'file_id': sent.video.file_id}], settings)
                     else:
                         await message.answer(_("Wrong url"))
 
@@ -529,7 +498,8 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                     await message.answer(_("Wrong url"))
 
             else:
-                load_msg = await message.answer(_("Music is loading"))
+                loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                await loader.start()
                 music_list, music_title, thumbnail_path = await downloader.music_downloaders(
                     MusicAction.SEARCH_BY_TEXT,
                     some_data=message.text
@@ -549,7 +519,8 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                         )
 
         elif message.video or message.video_note or message.audio or message.voice:
-            load_msg = await message.answer(_("Music is loading"))
+            loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+            await loader.start()
 
             media_type = None
             if message.video:
@@ -585,11 +556,8 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
         await message.answer(_("Error in loading"))
 
     finally:
-        if load_msg:
-            try:
-                await load_msg.delete()
-            except Exception as e:
-                print(f"ERROR: {e}")
+        if loader:
+            await loader.stop()
 
         await cleanup_files(video_path, photo_path, thumbnail_path)
 
@@ -603,7 +571,8 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
 @media_downloader_router.callback_query(SearchMusicInVideoCD.filter())
 async def send_music_results_from_video(call: CallbackQuery, lang: str):
     _ = get_translator(lang).gettext
-    load_msg = await call.message.answer(_("Music is loading"))
+    loader = AnimatedLoader(call.message, DOWNLOAD_FRAMES)
+    await loader.start()
     all_downloader = AllDownloader(call.message)
     thumbnail_path = None
     try:
@@ -630,19 +599,16 @@ async def send_music_results_from_video(call: CallbackQuery, lang: str):
         print("ERROR in send_music_results_from_video:", e)
         await call.message.answer(_("Error in loading music"))
     finally:
+        await loader.stop()
         if thumbnail_path and await asyncio.to_thread(os.path.exists, thumbnail_path):
             await asyncio.to_thread(os.remove, thumbnail_path)
-        if load_msg:
-            try:
-                await load_msg.delete()
-            except Exception as e:
-                print("ERROR deleting load_msg:", e)
 
 
 @media_downloader_router.callback_query(MusicCD.filter())
 async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD, lang: str):
     _ = get_translator(lang).gettext
-    load_msg = await call.message.answer(_("Music is loading"))
+    loader = AnimatedLoader(call.message, DOWNLOAD_FRAMES)
+    await loader.start()
     download_music = AllDownloader()
     music_path = None
     try:
@@ -658,12 +624,11 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
                 caption=_("Downloaded by"),
                 reply_markup=audio_keyboard(
                     lang,
-                    file_id="placeholder",  # will be updated after send
+                    file_id="placeholder",
                     title=title or "",
                     is_favorite=False
                 )
             )
-            # Update keyboard with real file_id after upload
             real_file_id = sent.audio.file_id if sent and sent.audio else ""
             if real_file_id:
                 await sent.edit_reply_markup(
@@ -678,11 +643,7 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
         print("ERROR in send_music_search_results:", e)
         await call.message.answer(text=_("Error in loading music"))
     finally:
-        if load_msg:
-            try:
-                await load_msg.delete()
-            except Exception as e:
-                print("ERROR deleting load_msg:", e)
+        await loader.stop()
         if music_path and await asyncio.to_thread(os.path.exists, music_path):
             await asyncio.to_thread(os.remove, music_path)
 
@@ -691,7 +652,8 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
 async def send_music_by_name(call: CallbackQuery, lang: str, callback_data: TopPopularMusicCD):
     _ = get_translator(lang).gettext
     downloader = AllDownloader()
-    load_msg = await call.message.answer(_("Music is loading"))
+    loader = AnimatedLoader(call.message, DOWNLOAD_FRAMES)
+    await loader.start()
     thumbnail_path = None
     try:
         music_list, music_title, thumbnail_path = await downloader.music_downloaders(
@@ -715,11 +677,7 @@ async def send_music_by_name(call: CallbackQuery, lang: str, callback_data: TopP
         print("ERROR in send_music_by_name:", e)
         await call.message.answer(_("Error in loading music"))
     finally:
-        if load_msg:
-            try:
-                await load_msg.delete()
-            except Exception as e:
-                print("ERROR deleting load_msg:", e)
+        await loader.stop()
         if thumbnail_path and await asyncio.to_thread(os.path.exists, thumbnail_path):
             await asyncio.to_thread(os.remove, thumbnail_path)
 
@@ -727,13 +685,13 @@ async def send_music_by_name(call: CallbackQuery, lang: str, callback_data: TopP
 @media_downloader_router.callback_query(AudioCD.filter())
 async def send_video_mp3_audio_version(call: CallbackQuery, lang: str, bot: Bot):
     _ = get_translator(lang).gettext
-    load_msg = await call.message.answer(text=_("Audio is loading"))
+    loader = AnimatedLoader(call.message, DOWNLOAD_FRAMES)
+    await loader.start()
     downloader_audio = AllDownloader()
     video_path = f"./media/videos/{get_video_file_name()}"
     audio_path = None
 
     try:
-
         file = await bot.get_file(call.message.video.file_id)
         file_info = await bot.get_file(file.file_id)
 
@@ -773,14 +731,9 @@ async def send_video_mp3_audio_version(call: CallbackQuery, lang: str, bot: Bot)
         await call.message.answer(text=_("Error in loading audio"))
 
     finally:
-        if load_msg:
-            try:
-                await load_msg.delete()
-            except Exception as e:
-                print("ERROR deleting load_msg:", e)
-
+        await loader.stop()
         for file in [audio_path, video_path]:
-            if await asyncio.to_thread(os.path.exists, file):
+            if file and await asyncio.to_thread(os.path.exists, file):
                 await asyncio.to_thread(os.remove, file)
 
 
