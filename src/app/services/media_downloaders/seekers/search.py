@@ -16,10 +16,27 @@ CACHE_TTL_SECONDS = 60 * 60
 
 class YouTubeSearcher:
 
-    def __init__(self):
+    def __init__(self, session: Optional[aiohttp.ClientSession] = None):
         self.settings = Settings()
+        # переиспользуемая сессия — без неё каждый вызов делает новый TLS handshake
+        self._session = session
+        self._owns_session = session is None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def close(self):
+        if self._owns_session and self._session and not self._session.closed:
+            await self._session.close()
 
     async def get_media_info(self, video_url: str) -> Optional[Dict[str, Any]]:
+        cache_key = f"media_info:{video_url}"
+        cached = self.cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         try:
             def extract_info():
                 with YoutubeDL({"quiet": True}) as ydl:
@@ -34,7 +51,10 @@ class YouTubeSearcher:
                         "filesize_mb": round(filesize / (1024 * 1024), 2) if filesize else None,
                     }
 
-            return await asyncio.to_thread(extract_info)
+            result = await asyncio.to_thread(extract_info)
+            if result is not None:
+                self.cache_set(cache_key, result)
+            return result
 
         except Exception as e:
             print("ERROR", e)
@@ -50,9 +70,6 @@ class YouTubeSearcher:
             ydl_opts = {
                 "quiet": True,
                 "skip_download": True,
-                # extract_flat=True tells yt-dlp to handle ytsearch: scheme
-                # and return a flat list without downloading format manifests —
-                # this is required for ytsearchN: to work at all
                 "extract_flat": True,
             }
 
@@ -74,7 +91,6 @@ class YouTubeSearcher:
                     if not entry:
                         continue
                     duration = entry.get("duration") or 0
-                    # extract_flat doesn't return filesize — skip it
                     results.append({
                         "title": entry.get("title", ""),
                         "id": entry.get("id", ""),
@@ -103,59 +119,34 @@ class YouTubeSearcher:
     def cache_set(self, key: str, value):
         _API_CACHE[key] = (time.time(), value)
 
-    async def get_top_music(self, limit: int = 50) -> List[Dict[str, str]]:
-        cache_key = f"lastfm:global:{limit}"
+    async def _fetch_top_tracks(
+        self,
+        method: str,
+        cache_key: str,
+        extra_params: Optional[Dict[str, Any]] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, str]]:
         cached = self.cache_get(cache_key)
         if cached is not None:
             return cached
 
         params = {
-            "method": "chart.gettoptracks",
-            "api_key": self.settings.lastfm_api_key,
-            "format": "json",
-            "limit": limit
-        }
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(LASTFM_API_URL, params=params, timeout=15) as resp:
-                    if resp.status != 200:
-                        return []
-                    data = await resp.json()
-        except Exception:
-            return []
-
-        tracks = data.get("tracks", {}).get("track", []) or []
-        result: List[Dict[str, str]] = []
-        for t in tracks:
-            artist_obj = t.get("artist")
-            artist = artist_obj.get("name") if isinstance(artist_obj, dict) else (artist_obj or "")
-            title = t.get("name") or ""
-            result.append({"artist": artist, "title": title})
-
-        self.cache_set(cache_key, result)
-        return result
-
-    async def get_top_by_region_period(self, region: str, period: str, limit: int = 50) -> List[Dict[str, str]]:
-        cache_key = f"lastfm:{region}:{period}:{limit}"
-        cached = self.cache_get(cache_key)
-        if cached is not None:
-            return cached
-
-        params = {
-            "method": "chart.gettoptracks",
+            "method": method,
             "api_key": self.settings.lastfm_api_key,
             "format": "json",
             "limit": limit,
         }
+        if extra_params:
+            params.update(extra_params)
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(LASTFM_API_URL, params=params, timeout=15) as resp:
-                    if resp.status != 200:
-                        return []
-                    data = await resp.json()
-        except Exception:
+            session = await self._get_session()
+            async with session.get(LASTFM_API_URL, params=params, timeout=15) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+        except Exception as e:
+            print("ERROR _fetch_top_tracks:", e)
             return []
 
         tracks = data.get("tracks", {}).get("track", []) or []
@@ -168,3 +159,23 @@ class YouTubeSearcher:
 
         self.cache_set(cache_key, result)
         return result
+
+    async def get_top_music(self, limit: int = 50) -> List[Dict[str, str]]:
+        cache_key = f"lastfm:global:{limit}"
+        return await self._fetch_top_tracks(
+            method="chart.gettoptracks",
+            cache_key=cache_key,
+            limit=limit,
+        )
+
+    async def get_top_by_region(self, region: str, limit: int = 50) -> List[Dict[str, str]]:
+        # geo.gettoptracks — единственный метод Last.fm, который реально
+        # фильтрует по стране; region должен быть ISO country name,
+        # который Last.fm ожидает (например "Russia", "United States")
+        cache_key = f"lastfm:{region}:{limit}"
+        return await self._fetch_top_tracks(
+            method="geo.gettoptracks",
+            cache_key=cache_key,
+            extra_params={"country": region},
+            limit=limit,
+        )
