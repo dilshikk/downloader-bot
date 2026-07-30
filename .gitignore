@@ -9,6 +9,9 @@ dist/
 *.egg-info/
 .eggs/
 
+# [alembic]
+alembic.ini
+
 # Virtual environment
 .venv/
 venv/
