@@ -26,7 +26,16 @@ QUALITY_COVER    = "cover"
 QUALITY_KARAOKE  = "karaoke"
 QUALITY_NORMAL   = "normal"
 
+# YouTube Music "Artist - Topic" channels always produce DRM-protected
+# audio streams that yt-dlp cannot download.  We detect them by the
+# well-known " - Topic" suffix on the uploader/channel name.
 _RE_TOPIC = re.compile(r" - Topic$", re.IGNORECASE)
+
+
+def is_topic_channel(uploader: str) -> bool:
+    """Return True if the uploader is a YouTube Music auto-generated Topic channel."""
+    return bool(_RE_TOPIC.search(uploader or ""))
+
 
 _LIVE_KEYWORDS    = ("live", "concert", "live performance", "in concert")
 _KARAOKE_KEYWORDS = ("karaoke", "instrumental", "backing track", "minus track", "no vocals")
@@ -38,13 +47,17 @@ _OFFICIAL_TITLE   = ("official video", "official audio", "official music video",
 # ── Quality classifier ─────────────────────────────────────────────────
 
 def _classify_quality(title: str, uploader: str) -> str:
+    """
+    Classify a search result's quality tier.
+
+    NOTE: Topic channels are intentionally NOT classified as QUALITY_OFFICIAL
+    here — they are filtered out entirely in search_music() before scoring,
+    because they always produce DRM-protected streams.
+    """
     t = title.lower()
     u = (uploader or "").lower()
 
-    # YouTube Music "Artist - Topic" channels = guaranteed official audio
-    if _RE_TOPIC.search(uploader or ""):
-        return QUALITY_OFFICIAL
-    # VEVO channels
+    # VEVO channels — official, downloadable
     if "vevo" in u:
         return QUALITY_OFFICIAL
 
@@ -78,10 +91,7 @@ _RE_MULTI_PARENS  = re.compile(r'\s*[\(\[][^\)\]]{1,40}[\)\]]')
 def _extract_artist(title: str, uploader: str) -> Tuple[str, str]:
     """
     Returns (artist, clean_title).
-    Handles:
-      - 'Artist - Title'  (YouTube standard)
-      - 'Artist - Topic'  uploader channel
-      - 'ArtistVEVO'      VEVO channels
+    Handles 'Artist - Title' patterns and VEVO channels.
     """
     clean = _RE_PARENS_SUFFIX.sub('', title).strip()
 
@@ -91,11 +101,6 @@ def _extract_artist(title: str, uploader: str) -> Tuple[str, str]:
             artist = parts[0].strip()
             track  = _RE_PARENS_SUFFIX.sub('', parts[1]).strip()
             return artist, track
-
-    # "Artist - Topic" uploader
-    if _RE_TOPIC.search(uploader or ""):
-        artist = _RE_TOPIC.sub("", uploader).strip()
-        return artist, clean
 
     # "ArtistVEVO" uploader
     if uploader and uploader.lower().endswith("vevo"):
@@ -238,9 +243,12 @@ class YouTubeSearcher:
         """
         Smart music search: quality scoring, artist extraction, deduplication.
 
-        Each result dict contains:
+        YouTube Music "Topic" channel results are EXCLUDED entirely because
+        they always produce DRM-protected streams that cannot be downloaded.
+
+        Each result dict:
           id, title, clean_title, artist, duration, duration_sec,
-          quality, score, uploader, filesize_mb (always None)
+          quality, score, uploader
 
         Returns (results, raw_entries, errors).
         """
@@ -253,8 +261,9 @@ class YouTubeSearcher:
         if cached is not None:
             return cached
 
-        # Fetch more candidates so we have room to rank and dedup
-        fetch_n = max(max_count * 2, 20)
+        # Fetch more candidates so we have room to rank, dedup, and still
+        # have enough after filtering Topic channels
+        fetch_n = max(max_count * 3, 30)
 
         def _run():
             opts = {
@@ -279,19 +288,30 @@ class YouTubeSearcher:
             return [], raw_data, errors or [DownloadError.MUSIC_NOT_FOUND]
 
         scored: List[Dict] = []
+        topic_count = 0  # track how many we skip for debugging
+
         for e in raw_entries:
             if not e or not e.get("id"):
                 continue
+
+            uploader = e.get("uploader") or e.get("channel") or ""
+
+            # ── CRITICAL: Skip YouTube Music Topic channels ──────────
+            # These auto-generated channels always produce DRM-protected
+            # audio that yt-dlp cannot download.
+            if is_topic_channel(uploader):
+                topic_count += 1
+                continue
+
             dur = e.get("duration") or 0
-            # Hard filter: skip very short junk and overly long content
+            # Hard filter: skip very short junk (<30 s) and podcast-length (>12 min)
             if dur and (dur < 30 or dur > 720):
                 continue
 
-            title    = e.get("title") or ""
-            uploader = e.get("uploader") or e.get("channel") or ""
-            quality  = _classify_quality(title, uploader)
+            title   = e.get("title") or ""
+            quality = _classify_quality(title, uploader)
             artist, clean_title = _extract_artist(title, uploader)
-            score    = _score_result(e, q, quality)
+            score   = _score_result(e, q, quality)
 
             m, s = divmod(int(dur), 60) if dur else (0, 0)
 
@@ -307,6 +327,9 @@ class YouTubeSearcher:
                 "uploader":     uploader,
                 "filesize_mb":  None,
             })
+
+        if topic_count:
+            print(f"search_music: skipped {topic_count} DRM Topic-channel entries for query={q!r}")
 
         # Rank by score, deduplicate near-identical titles, take top N
         scored.sort(key=lambda x: x["score"], reverse=True)
