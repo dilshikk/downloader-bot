@@ -110,7 +110,6 @@ async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, 
                     )
                 effect_sent = True
 
-            # Delete the "Choose effect" message after successfully sending the result
             if effect_sent:
                 try:
                     await call.message.delete()
@@ -295,14 +294,10 @@ async def send_cached_media(message: Message, cached_media: List[Dict], lang: st
         return False
 
 
+# Local Bot API server supports up to 2 GB — no file size check needed here.
 @media_downloader_router.message(F.text | F.video | F.video_note | F.voice | F.audio)
 async def all_downloader_(message: Message, lang: str, settings: Settings):
     _ = get_translator(lang).gettext
-
-    for media in [message.audio, message.voice, message.video, message.video_note]:
-        if media and media.file_size > 20 * 1024 * 1024:
-            await message.answer(_("File is so big"))
-            return
 
     video_path = None
     post_paths = None
@@ -519,7 +514,6 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                         await message.answer(_("Wrong url"))
 
                 elif info.platform == "vk":
-                    # VK video download
                     loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
                     await loader.start()
                     video_path = await downloader.vk_downloaders(message.text)
@@ -648,7 +642,6 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
     _ = get_translator(lang).gettext
     video_id = callback_data.video_id
 
-    # Check Redis cache for previously sent file_id
     cached_fid = await get_cached_audio_file_id(video_id, settings)
     if cached_fid:
         try:
@@ -747,9 +740,7 @@ async def send_video_mp3_audio_version(call: CallbackQuery, lang: str, bot: Bot)
     audio_path = None
 
     try:
-        # Use bot.download() — it routes through the configured API server
-        # (local http://127.0.0.1:8081 or cloud), so no hardcoded URLs,
-        # no 20 MB cap, and no extra aiohttp session needed.
+        # Use bot.download() — routes through http://127.0.0.1:8081, no 20 MB cap
         await bot.download(
             file=call.message.video.file_id,
             destination=video_path,
