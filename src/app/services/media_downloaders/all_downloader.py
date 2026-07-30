@@ -172,7 +172,6 @@ class AllDownloader:
                 elif media_type == MediaType.VOICE:
                     media_file_id = self.message.voice.file_id
 
-                file_info = await self.message.bot.get_file(media_file_id)
                 if media_type == MediaType.VIDEO:
                     media_path = f'./media/videos/{get_video_file_name()}'
                 elif media_type == MediaType.VIDEO_NOTE:
@@ -182,17 +181,9 @@ class AllDownloader:
                 elif media_type == MediaType.VOICE:
                     media_path = f'./media/audios/{get_audio_file_name()}'
 
-                async with aiohttp.ClientSession() as session:
-                    url = f'https://api.telegram.org/bot{self.message.bot.token}/getFile?file_id={file_info.file_id}'
-                    async with session.get(url) as resp:
-                        file_info = await resp.json()
-                        file_path = file_info['result']['file_path']
-
-                    file_url = f'https://api.telegram.org/file/bot{self.message.bot.token}/{file_path}'
-                    async with session.get(file_url) as response:
-                        if response.status == 200:
-                            async with aiofiles.open(media_path, 'wb') as f:
-                                await f.write(await response.read())
+                # Use bot.download() — routes through the configured API server
+                # (http://127.0.0.1:8081), no hardcoded URLs, no 20 MB cap.
+                await self.message.bot.download(file=media_file_id, destination=media_path)
 
                 if media_type in [MediaType.VOICE, MediaType.VIDEO_NOTE]:
                     audio_path = None
