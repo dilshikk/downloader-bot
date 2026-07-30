@@ -5,16 +5,15 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from src.app.keyboards.callback_data import TopPopularMusicCD
 from src.app.keyboards.inline import auido_effect_kbd
 from src.app.services.media_downloaders.seekers.search import YouTubeSearcher
 from src.app.utils.i18n import get_translator
 
 user_commands_router = Router()
 
-# Shared instance — keeps the aiohttp session and in-process cache alive
 _searcher = YouTubeSearcher()
 
-# region code -> (flag emoji, Last.fm country name)
 REGIONS = {
     "uz": ("🇺🇿", "Uzbekistan"),
     "ru": ("🇷🇺", "Russia"),
@@ -28,8 +27,6 @@ PAGE_SIZE = 10
 DEFAULT_REGION = "uz"
 
 
-# ── Chart state ───────────────────────────────────────────────────────
-
 class ChartState(Enum):
     OK = "ok"
     EMPTY = "empty"
@@ -42,29 +39,37 @@ async def fetch_chart_safe(region_name: str) -> tuple[ChartState, list[dict]]:
     except Exception as e:
         print("ERROR fetch_chart_safe:", e)
         return ChartState.ERROR, []
-
     if not songs:
         return ChartState.EMPTY, []
-
     return ChartState.OK, songs
 
 
-# ── Keyboard ──────────────────────────────────────────────────────────
-
 def build_top_keyboard(
     active_region: str,
+    songs_chunk: list[dict],
     page: int = 0,
     has_next: bool = False,
     has_prev: bool = False,
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
+    # Row 1: region flags
     for code, (flag, _) in REGIONS.items():
         text = f"{flag} ✅" if code == active_region else flag
-        # switching region always resets to page 0
         builder.button(text=text, callback_data=f"top_region:{code}:0")
     builder.adjust(len(REGIONS))
 
+    # Row 2+: numbered track buttons (1 2 3 4 5 / 6 7 8 9 10)
+    start = page * PAGE_SIZE
+    for i, track in enumerate(songs_chunk, start=start + 1):
+        name = f"{track.get('artist', '')} — {track.get('title', '')}"
+        builder.button(
+            text=str(i),
+            callback_data=TopPopularMusicCD(music_name=name[:40]).pack(),
+        )
+    builder.adjust(len(REGIONS), 5)  # flags row=6, then 5+5 track buttons
+
+    # Navigation row
     nav: list[InlineKeyboardButton] = []
     if has_prev:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"top_page:{active_region}:{page - 1}"))
@@ -73,12 +78,9 @@ def build_top_keyboard(
     if nav:
         builder.row(*nav)
 
-    # Close button — separate row at the bottom
     builder.row(InlineKeyboardButton(text="❌", callback_data="top_close"))
     return builder.as_markup()
 
-
-# ── Text ──────────────────────────────────────────────────────────────
 
 def build_top_text(songs: list[dict], page: int) -> str:
     start = page * PAGE_SIZE
@@ -91,8 +93,6 @@ def build_top_text(songs: list[dict], page: int) -> str:
     return "\n".join(lines)
 
 
-# ── Shared render helper ──────────────────────────────────────────────
-
 async def render_chart(
     target: Message | CallbackQuery,
     region_code: str,
@@ -104,17 +104,20 @@ async def render_chart(
 
     if state == ChartState.ERROR:
         text = "⚠️ Не удалось загрузить чарт. Last.fm недоступен, попробуйте позже."
-        keyboard = build_top_keyboard(region_code)
+        keyboard = build_top_keyboard(region_code, songs_chunk=[], page=0)
     elif state == ChartState.EMPTY:
         flag = REGIONS.get(region_code, REGIONS[DEFAULT_REGION])[0]
         text = f"{flag} Для этого региона треков не найдено."
-        keyboard = build_top_keyboard(region_code)
+        keyboard = build_top_keyboard(region_code, songs_chunk=[], page=0)
     else:
         max_page = (len(songs) - 1) // PAGE_SIZE
         page = min(max(page, 0), max_page)
+        start = page * PAGE_SIZE
+        chunk = songs[start: start + PAGE_SIZE]
         text = build_top_text(songs, page)
         keyboard = build_top_keyboard(
             region_code,
+            songs_chunk=chunk,
             page=page,
             has_next=page < max_page,
             has_prev=page > 0,
