@@ -96,20 +96,22 @@ def songs_keyboard(tracks: List[Dict[str, str]], page: int = 1) -> InlineKeyboar
 def audio_keyboard(lang: str, file_id: str = "", title: str = "", is_favorite: bool = False):
     _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
-    keyboard_builder.row(InlineKeyboardButton(text=_("effektlar"), callback_data="effects"))
 
     if file_id:
-        # ❤️ = remove from favorites (added state)
-        # 🤍 = add to favorites (not added state)
-        remove_btn = InlineKeyboardButton(
-            text="❤️" if is_favorite else "❤",
-            callback_data=FavoriteCD(action="remove").pack()
+        # One row: ❤️ (favorite) on left, ⊞ (effects) on right
+        fav_btn = InlineKeyboardButton(
+            text="❤️" if is_favorite else "🤍",
+            callback_data=FavoriteCD(action="remove" if is_favorite else "add").pack()
         )
-        add_btn = InlineKeyboardButton(
-            text="🤍",
-            callback_data=FavoriteCD(action="add").pack()
+        effects_btn = InlineKeyboardButton(
+            text="⊞",
+            callback_data="effects"
         )
-        keyboard_builder.row(remove_btn, add_btn)
+        keyboard_builder.row(fav_btn, effects_btn)
+    else:
+        keyboard_builder.row(
+            InlineKeyboardButton(text="⊞", callback_data="effects")
+        )
 
     return keyboard_builder.as_markup()
 
