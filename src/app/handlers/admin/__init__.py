@@ -7,7 +7,7 @@ from src.app.handlers.admin.menu.channel import channels_router
 from src.app.handlers.admin.commands import admin_commands_router
 from src.app.handlers.admin.menu.menu import admin_menu_router
 from src.app.handlers.admin.menu.referal import referrals_router
-
+from src.app.middleware.admin_language import AdminLanguageMiddleware
 
 def register_admin_routers(router: Router, settings: Settings):
     admins_id = []
@@ -16,6 +16,10 @@ def register_admin_routers(router: Router, settings: Settings):
     admin_register_router = Router()
     admin_register_router.message.filter(F.from_user.id.in_(admins_id))
     admin_register_router.callback_query.filter(F.from_user.id.in_(admins_id))
+
+    # Force Russian language for all admin handlers regardless of user's language setting
+    admin_register_router.message.middleware(AdminLanguageMiddleware())
+    admin_register_router.callback_query.middleware(AdminLanguageMiddleware())
 
     admin_register_router.include_router(admin_commands_router)
     admin_register_router.include_router(broadcaster_router)
