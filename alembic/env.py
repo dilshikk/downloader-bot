@@ -1,24 +1,28 @@
 import asyncio
+import os
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
-
 from alembic import context
 
 # ---------------------------------------------------------------------------
-# Load .env so POSTGRES_* variables are available
+# Load .env BEFORE accessing os.environ
 # ---------------------------------------------------------------------------
-try:
-    import environs
-    _env = environs.Env()
-    _env.read_env()
-except Exception:
-    pass
+_env_file = Path(__file__).resolve().parents[1] / ".env"
+if _env_file.exists():
+    with open(_env_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            os.environ.setdefault(key.strip(), value.strip())
 
-import os
-
+# ---------------------------------------------------------------------------
 # Build database URL from individual env vars (same as bot's config.py)
+# ---------------------------------------------------------------------------
 _DB_URL = (
     f"postgresql+asyncpg://"
     f"{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
@@ -35,8 +39,7 @@ config.set_main_option("sqlalchemy.url", _DB_URL)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# We do NOT use SQLAlchemy ORM models — set target_metadata to None
-# so Alembic operates in "plain SQL" mode (each migration writes raw SQL).
+# No ORM models — plain SQL migrations
 target_metadata = None
 
 
@@ -44,7 +47,6 @@ target_metadata = None
 # Run migrations
 # ---------------------------------------------------------------------------
 def run_migrations_offline() -> None:
-    """Run migrations without a live DB connection (generates SQL script)."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -57,13 +59,11 @@ def run_migrations_offline() -> None:
 
 
 async def run_migrations_online() -> None:
-    """Run migrations against a live DB connection."""
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
-
     async with connectable.connect() as connection:
         await connection.run_sync(
             lambda sync_conn: context.configure(
@@ -72,7 +72,6 @@ async def run_migrations_online() -> None:
             )
         )
         await connection.run_sync(lambda _: context.run_migrations())
-
     await connectable.dispose()
 
 
