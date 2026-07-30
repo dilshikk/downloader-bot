@@ -14,13 +14,14 @@ user_commands_router = Router()
 
 _searcher = YouTubeSearcher()
 
+# region code -> (flag emoji, ISO 3166-1 alpha-2 для Shazam)
 REGIONS = {
-    "uz": ("🇺🇿", "Uzbekistan"),
-    "ru": ("🇷🇺", "Russia"),
-    "gb": ("🇬🇧", "United Kingdom"),
-    "kz": ("🇰🇿", "Kazakhstan"),
-    "tr": ("🇹🇷", "Turkey"),
-    "az": ("🇦🇿", "Azerbaijan"),
+    "uz": ("🇺🇿", "UZ"),
+    "ru": ("🇷🇺", "RU"),
+    "gb": ("🇬🇧", "GB"),
+    "kz": ("🇰🇿", "KZ"),
+    "tr": ("🇹🇷", "TR"),
+    "az": ("🇦🇿", "AZ"),
 }
 
 PAGE_SIZE = 10
@@ -33,9 +34,9 @@ class ChartState(Enum):
     ERROR = "error"
 
 
-async def fetch_chart_safe(region_name: str) -> tuple[ChartState, list[dict]]:
+async def fetch_chart_safe(region_iso: str) -> tuple[ChartState, list[dict]]:
     try:
-        songs = await _searcher.get_top_by_region(region_name, limit=50)
+        songs = await _searcher.get_top_by_region(region_iso, limit=50)
     except Exception as e:
         print("ERROR fetch_chart_safe:", e)
         return ChartState.ERROR, []
@@ -53,13 +54,13 @@ def build_top_keyboard(
 ) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    # Row 1: region flags
+    # Row: region flags
     for code, (flag, _) in REGIONS.items():
         text = f"{flag} ✅" if code == active_region else flag
         builder.button(text=text, callback_data=f"top_region:{code}:0")
     builder.adjust(len(REGIONS))
 
-    # Row 2+: numbered track buttons (1 2 3 4 5 / 6 7 8 9 10)
+    # Rows: numbered track buttons (5 per row)
     start = page * PAGE_SIZE
     for i, track in enumerate(songs_chunk, start=start + 1):
         name = f"{track.get('artist', '')} — {track.get('title', '')}"
@@ -67,9 +68,9 @@ def build_top_keyboard(
             text=str(i),
             callback_data=TopPopularMusicCD(music_name=name[:40]).pack(),
         )
-    builder.adjust(len(REGIONS), 5)  # flags row=6, then 5+5 track buttons
+    builder.adjust(len(REGIONS), 5)
 
-    # Navigation row
+    # Navigation
     nav: list[InlineKeyboardButton] = []
     if has_prev:
         nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"top_page:{active_region}:{page - 1}"))
@@ -99,14 +100,13 @@ async def render_chart(
     page: int,
     is_edit: bool,
 ) -> None:
-    _, region_name = REGIONS.get(region_code, REGIONS[DEFAULT_REGION])
-    state, songs = await fetch_chart_safe(region_name)
+    flag, region_iso = REGIONS.get(region_code, REGIONS[DEFAULT_REGION])
+    state, songs = await fetch_chart_safe(region_iso)
 
     if state == ChartState.ERROR:
-        text = "⚠️ Не удалось загрузить чарт. Last.fm недоступен, попробуйте позже."
+        text = "⚠️ Не удалось загрузить чарт. Shazam недоступен, попробуйте позже."
         keyboard = build_top_keyboard(region_code, songs_chunk=[], page=0)
     elif state == ChartState.EMPTY:
-        flag = REGIONS.get(region_code, REGIONS[DEFAULT_REGION])[0]
         text = f"{flag} Для этого региона треков не найдено."
         keyboard = build_top_keyboard(region_code, songs_chunk=[], page=0)
     else:
