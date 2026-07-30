@@ -8,7 +8,9 @@ from src.app.services.media_downloaders.audio_and_music_downloaders.music_downlo
 from src.app.services.media_downloaders.seekers.search import YouTubeSearcher
 from src.app.services.media_downloaders.utils.audio import AudioUtils
 from src.app.services.media_downloaders.utils.downlaod_media import download_media_in_internet
-from src.app.services.media_downloaders.utils.files import get_video_file_name, get_audio_file_name, get_photo_file_name
+from src.app.services.media_downloaders.utils.files import (
+    get_video_file_name, get_audio_file_name, get_photo_file_name
+)
 from src.app.services.media_downloaders.video_downloaders.instagram_downloader import InstagramDownloader
 from src.app.services.media_downloaders.video_downloaders.tiktok_downloader import TikTokDownloader
 from src.app.services.media_downloaders.video_downloaders.vk_downloader import VKDownloader
@@ -21,7 +23,6 @@ from src.app.utils.i18n import get_translator
 
 
 def _safe_minutes(duration) -> int:
-    """Parse 'M:SS' or None → minutes int, never raises."""
     try:
         return int(str(duration).split(":")[0])
     except Exception:
@@ -29,7 +30,7 @@ def _safe_minutes(duration) -> int:
 
 
 def _clean_title(title: str) -> str:
-    return " ".join(w for w in title.split() if not w.startswith("#") and not w.startswith("@"))
+    return " ".join(w for w in str(title).split() if not w.startswith("#") and not w.startswith("@"))
 
 
 class AllDownloader:
@@ -54,7 +55,6 @@ class AllDownloader:
         file_path = None
 
         parsing_types = [InstagramMediaType.HIGHLIGHT, InstagramMediaType.STORIES]
-
         if media_type in parsing_types:
             file_path = await self.instagram_downloader.get_instagram_links_async(url)
         if media_type == InstagramMediaType.POST:
@@ -68,7 +68,6 @@ class AllDownloader:
             if self.message:
                 await self.message.answer(self._("File size bigger than 2GB"))
             return None
-
         if not file_path or DownloadError.DOWNLOAD_ERROR in errors:
             if self.message:
                 await self.message.answer(self._("Error in loading file"))
@@ -105,50 +104,52 @@ class AllDownloader:
         media_type: MediaType = None,
         some_data: str = None,
     ):
-        media_file_id = None
         media_path = None
         thumbnail_path = None
 
         try:
-            # ── SEARCH BY TEXT ────────────────────────────────────────
+            # ── SEARCH BY TEXT ────────────────────────────────────────────────
             if actions == MusicAction.SEARCH_BY_TEXT:
                 musics_data, entries, errors = await self.search.search_music(some_data, 10)
 
-                if DownloadError.MUSIC_NOT_FOUND in errors:
+                if not musics_data:
                     await self.message.answer(self._("Music not found"))
                     return [], "", None
 
-                musics_list = []
-                music_title = ""
-                real_index = 1
-
-                for music_data in (musics_data or []):
-                    title = music_data.get("title")
-                    duration = music_data.get("duration")
-
-                    if not title:
-                        continue
-
-                    minutes = _safe_minutes(duration)
-                    if minutes >= 10:
-                        continue
-
-                    musics_list.append(music_data)
-                    music_title += f"{real_index}. {_clean_title(title)} - {duration or '?'}\n\n"
-                    real_index += 1
-
                 # Thumbnail from first entry
                 for entry in (entries or []):
-                    thumb = entry.get("thumbnail") or entry.get("thumbnails", [{}])[0].get("url", "")
+                    thumb = (
+                        entry.get("thumbnail")
+                        or (entry.get("thumbnails") or [{}])[0].get("url", "")
+                    )
                     if thumb:
                         thumbnail_path = await download_media_in_internet(
                             thumb, get_photo_file_name(), MediaType.PHOTO
                         )
                     break
 
+                musics_list = []
+                music_title = ""
+                idx = 1
+                for music_data in musics_data:
+                    title = music_data.get("title")
+                    if not title:
+                        continue
+                    duration = music_data.get("duration") or "0:00"
+                    # Skip very long tracks (>10 min), keep everything else
+                    if _safe_minutes(duration) >= 10:
+                        continue
+                    musics_list.append(music_data)
+                    music_title += f"{idx}. {_clean_title(title)} - {duration}\n\n"
+                    idx += 1
+
+                if not musics_list:
+                    await self.message.answer(self._("Music not found"))
+                    return [], "", None
+
                 return musics_list, music_title, thumbnail_path
 
-            # ── DOWNLOAD ──────────────────────────────────────────────
+            # ── DOWNLOAD ──────────────────────────────────────────────────────
             if actions == MusicAction.DOWNLOAD:
                 result = await self.music_downloader.download_music_from_youtube(some_data)
                 if not result:
@@ -160,8 +161,9 @@ class AllDownloader:
                     return None
                 return music_output_path, title
 
-            # ── SEARCH BY MEDIA ───────────────────────────────────────
+            # ── SEARCH BY MEDIA ───────────────────────────────────────────────
             if actions == MusicAction.SEARCH_BY_MEDIA:
+                media_file_id = None
                 if media_type == MediaType.VIDEO:
                     media_file_id = self.message.video.file_id
                     media_path = f"./media/videos/{get_video_file_name()}"
@@ -175,7 +177,7 @@ class AllDownloader:
                     media_file_id = self.message.voice.file_id
                     media_path = f"./media/audios/{get_audio_file_name()}"
 
-                # bot.download() routes through the local Bot API server (http://127.0.0.1:8081)
+                # Uses local Bot API server (127.0.0.1:8081) — no hardcoded api.telegram.org
                 await self.message.bot.download(file=media_file_id, destination=media_path)
 
                 if media_type in [MediaType.VOICE, MediaType.VIDEO_NOTE]:
@@ -187,7 +189,7 @@ class AllDownloader:
                         )
 
                     music_texts = await asyncio.to_thread(
-                        self.audio_utils.speech_to_text, media_path or audio_path, some_data
+                        self.audio_utils.speech_to_text, audio_path or media_path, some_data
                     )
 
                     musics_data, entries, errors = await self.search.search_music(music_texts, 10)
@@ -200,30 +202,28 @@ class AllDownloader:
                             )
                         break
 
-                    if DownloadError.MUSIC_NOT_FOUND in errors:
+                    if not musics_data:
                         await self.message.answer(self._("Music not found"))
 
                     musics_list = []
                     music_title = ""
-
-                    for i, music_data in enumerate(musics_data or [], start=1):
-                        title = music_data.get("title")
-                        if not title:
+                    for i, md in enumerate(musics_data or [], start=1):
+                        t = md.get("title")
+                        if not t:
                             continue
-                        duration = music_data.get("duration") or "0:00"
-                        if _safe_minutes(duration) < 10:
-                            musics_list.append(music_data)
-                            music_title += f"{i}. {_clean_title(title)} - {duration}\n\n"
+                        dur = md.get("duration") or "0:00"
+                        if _safe_minutes(dur) < 10:
+                            musics_list.append(md)
+                            music_title += f"{i}. {_clean_title(t)} - {dur}\n\n"
 
-                    for file in [audio_path, media_path]:
-                        if file and await asyncio.to_thread(os.path.exists, file):
-                            await asyncio.to_thread(os.remove, file)
+                    for f in [audio_path, media_path]:
+                        if f and await asyncio.to_thread(os.path.exists, f):
+                            await asyncio.to_thread(os.remove, f)
 
                     return musics_list, music_title, thumbnail_path
 
-                # Audio / Video → Shazam recognize
+                # Audio / Video → Shazam
                 music_name = await self.music_downloader.find_song_name_by_video_audio_voice_video_note(media_path)
-
                 if not music_name:
                     await self.message.answer(self._("Music not found"))
                     return [], "", None
@@ -238,7 +238,7 @@ class AllDownloader:
                         )
                     break
 
-                if DownloadError.MUSIC_NOT_FOUND in errors:
+                if not musics_data:
                     await self.message.answer(self._("Music not found"))
 
                 if media_path and await asyncio.to_thread(os.path.exists, media_path):
@@ -246,20 +246,21 @@ class AllDownloader:
 
                 musics_list = []
                 music_title = ""
-
-                for i, music_data in enumerate(musics_data or [], start=1):
-                    title = music_data.get("title")
-                    if not title:
+                for i, md in enumerate(musics_data or [], start=1):
+                    t = md.get("title")
+                    if not t:
                         continue
-                    duration = music_data.get("duration") or "0:00"
-                    if _safe_minutes(duration) <= 10:
-                        musics_list.append(music_data)
-                        music_title += f"{i}. {_clean_title(title)} - {duration}\n\n"
+                    dur = md.get("duration") or "0:00"
+                    if _safe_minutes(dur) <= 10:
+                        musics_list.append(md)
+                        music_title += f"{i}. {_clean_title(t)} - {dur}\n\n"
 
                 return musics_list, music_title, thumbnail_path
 
         except Exception as e:
-            print("ERROR", e)
+            print("ERROR in music_downloaders:", e)
+            import traceback
+            traceback.print_exc()
             return None, None, None
 
     async def extract_video_to_audio(self, video_path: str):
