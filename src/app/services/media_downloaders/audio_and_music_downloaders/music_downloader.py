@@ -47,7 +47,15 @@ class MusicDownloader:
         music_output_path = f"./media/audios/{get_audio_file_name()}"
 
         yt_dlp_opts: dict = {
-            # Prefer m4a (single file, no merge needed)
+            # Use Android YouTube client — bypasses bot-detection throttling,
+            # returns direct CDN URLs without extra JS challenge resolution
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["android"],
+                    "skip": ["hls", "dash"],
+                }
+            },
+            # Prefer m4a (single file, no merge/mux step needed)
             "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
             "outtmpl": music_output_path + ".%(ext)s",
             "quiet": True,
@@ -61,7 +69,7 @@ class MusicDownloader:
         }
 
         if _ARIA2C_AVAILABLE:
-            # aria2c: 16 parallel connections — fastest option on VPS
+            # aria2c: 16 parallel connections — fastest on VPS
             yt_dlp_opts.update(_ARIA2C_OPTS)
         else:
             # Fallback: yt-dlp built-in parallel fragment downloads
