@@ -41,7 +41,7 @@ def _prefetch_top(music_list: list, n: int = 2) -> None:
             _music_downloader.prefetch(video_id)
 
 
-# ── Media effects ──────────────────────────────────────────────────────
+# ── Media effects ──────────────────────────────────────────────
 
 @media_downloader_router.callback_query(MediaEffectsCD.filter())
 async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, bot: Bot, state: FSMContext, lang: str):
@@ -221,7 +221,7 @@ async def take_media(message: Message, state: FSMContext, bot: Bot, lang: str):
             await asyncio.to_thread(os.remove, out_put_media_path)
 
 
-# ── Utilities ──────────────────────────────────────────────────────────
+# ── Utilities ──────────────────────────────────────────────
 
 async def cleanup_files(*file_paths):
     for path in file_paths:
@@ -289,7 +289,7 @@ async def send_cached_media(message: Message, cached_media: List[Dict], lang: st
         return False
 
 
-# ── Main message handler ───────────────────────────────────────────────
+# ── Main message handler ─────────────────────────────────────────────
 # Local Bot API server supports up to 2 GB — no file size check needed.
 
 @media_downloader_router.message(F.text | F.video | F.video_note | F.voice | F.audio)
@@ -510,7 +510,7 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
             await cleanup_post_paths(post_paths)
 
 
-# ── Music search results callbacks ────────────────────────────────────
+# ── Music search results callbacks ──────────────────────────────────
 
 @media_downloader_router.callback_query(SearchMusicInVideoCD.filter())
 async def send_music_results_from_video(call: CallbackQuery, lang: str):
@@ -554,13 +554,13 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
     Priority:
       1. Redis file_id cache  → instant re-send (Telegram serves from CDN)
       2. In-process prefetch  → near-instant (file already downloaded in background)
-      3. Fresh download       → yt-dlp; if DRM → fallback to title-based ytsearch
+      3. Fresh download       → yt-dlp; if DRM → ytsearch fallback skipping DRM IDs
     """
     _ = get_translator(lang).gettext
     video_id = callback_data.video_id
     track_title = callback_data.title or video_id  # used for DRM fallback
 
-    # ── Layer 1: Redis file_id cache ──────────────────────────────────
+    # ── Layer 1: Redis file_id cache ─────────────────────────────────
     cached_fid = await get_cached_audio_file_id(video_id, settings)
     if cached_fid:
         try:
@@ -579,17 +579,19 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
     title = ""
 
     try:
-        # ── Layer 2: prefetch cache ───────────────────────────────────
+        # ── Layer 2: prefetch cache ───────────────────────────────
         prefetched = await _music_downloader.wait_and_consume(video_id, timeout=30.0)
         if prefetched:
             music_path, title = prefetched
         else:
-            # ── Layer 3: fresh download (with DRM fallback) ───────────
+            # ── Layer 3: fresh download (with DRM fallback) ──────────
             result = await _music_downloader.download_music_from_youtube(video_id)
             if not result:
-                # DRM or error — try yt-dlp search by title
+                # DRM or error — search by title, skip the known bad video_id
                 print(f"DRM fallback for video_id={video_id!r}, title={track_title!r}")
-                result = await _music_downloader.download_music_by_query(track_title)
+                result = await _music_downloader.download_music_by_query(
+                    track_title, skip_ids=[video_id]
+                )
             if result:
                 music_path, title = result
 
