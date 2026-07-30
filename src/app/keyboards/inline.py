@@ -33,8 +33,15 @@ PERIOD_LABELS: Dict[str, str] = {
 _MAX_MUSIC_NAME_BYTES = 59
 
 
-def _truncate_utf8(text: str, max_bytes: int) -> str:
-    """Truncate a string so its UTF-8 encoding fits within max_bytes."""
+def _safe_callback_value(text: str, max_bytes: int) -> str:
+    """Sanitize and truncate text for use in callback_data.
+
+    - Removes ':' (aiogram separator)
+    - Truncates to fit within max_bytes in UTF-8
+    """
+    # Remove forbidden separator character
+    text = text.replace(":", "")
+    # Truncate by UTF-8 bytes
     encoded = text.encode("utf-8")
     if len(encoded) <= max_bytes:
         return text
@@ -92,7 +99,7 @@ def songs_keyboard(tracks: List[Dict[str, str]], page: int = 1) -> InlineKeyboar
         if len(label) > 64:
             label = label[:61] + "..."
         search_query = f"{t.get('artist', '')} {t.get('title', '')}"
-        search_query = _truncate_utf8(search_query, _MAX_MUSIC_NAME_BYTES)
+        search_query = _safe_callback_value(search_query, _MAX_MUSIC_NAME_BYTES)
         inline_keyboard.append(
             [
                 InlineKeyboardButton(
@@ -161,7 +168,7 @@ def top_chart_keyboard(
         if len(label) > 64:
             label = label[:61] + "..."
         search_query = f"{artist} {title}"
-        search_query = _truncate_utf8(search_query, _MAX_MUSIC_NAME_BYTES)
+        search_query = _safe_callback_value(search_query, _MAX_MUSIC_NAME_BYTES)
         inline_keyboard.append(
             [
                 InlineKeyboardButton(
@@ -259,7 +266,6 @@ def not_channels_button(channels: list) -> InlineKeyboardMarkup:
     keyboard_builder = InlineKeyboardBuilder()
 
     for channel in channels:
-        # channel tuple: (id, name, url/username, is_mandatory)
         channel_name = channel[1] if len(channel) > 1 else "Channel"
         channel_url = channel[2] if len(channel) > 2 else None
 
