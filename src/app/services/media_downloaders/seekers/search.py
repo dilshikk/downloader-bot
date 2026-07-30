@@ -13,6 +13,10 @@ LASTFM_API_URL = "http://ws.audioscrobbler.com/2.0/"
 _API_CACHE: Dict[str, tuple] = {}
 CACHE_TTL_SECONDS = 60 * 60
 
+# Cache for music search results to avoid repeated yt-dlp calls
+_SEARCH_CACHE: Dict[str, tuple] = {}
+SEARCH_CACHE_TTL = 60 * 30  # 30 minutes
+
 
 class YouTubeSearcher:
 
@@ -22,7 +26,7 @@ class YouTubeSearcher:
     async def get_media_info(self, video_url: str) -> Optional[Dict[str, Any]]:
         try:
             def extract_info():
-                with YoutubeDL({'quiet': True}) as ydl:
+                with YoutubeDL({'quiet': True, 'socket_timeout': 15}) as ydl:
                     info = ydl.extract_info(video_url, download=False)
                     if "entries" in info:
                         info = info["entries"][0]
@@ -41,16 +45,27 @@ class YouTubeSearcher:
             return None
 
     async def search_music(
-            self,
-            query: str,
-            max_count: int = 5
+        self,
+        query: str,
+        max_count: int = 5
     ) -> tuple[List[Dict[str, Any]], Any, List[str]] | None:
 
+        # Check search cache first
+        cache_key = f"search:{query}:{max_count}"
+        cached = self.cache_get(cache_key, _SEARCH_CACHE, SEARCH_CACHE_TTL)
+        if cached is not None:
+            return cached
+
         def extract_search():
+            # extract_flat=True skips full per-video extraction — much faster.
+            # Without it yt-dlp fetches full format info for every result (causes
+            # the repeated JS-runtime warnings and 9+ second delays).
             ydl_opts = {
                 "quiet": True,
-                "match_filter": lambda info: info.get('duration', 0) < 600,
                 "skip_download": True,
+                "extract_flat": True,  # <-- key optimisation: no per-video extraction
+                "socket_timeout": 15,
+                "ignoreerrors": True,
             }
 
             search_query = f"ytsearch{max_count}:{query}"
@@ -65,47 +80,64 @@ class YouTubeSearcher:
                         errors.append(DownloadError.MUSIC_NOT_FOUND)
                         return [], [], errors
 
-                    entries = data.get("entries", [])
+                    entries = data.get("entries", []) or []
 
                     for entry in entries:
-                        filesize = None
-                        if entry.get("formats"):
-                            best_audio = max(
-                                (f for f in entry["formats"] if f.get("filesize")),
-                                key=lambda f: f["filesize"],
-                                default=None
-                            )
-                            if best_audio:
-                                filesize = best_audio["filesize"]
+                        if not entry:
+                            continue
 
-                        duration = entry.get("duration", 0)
+                        duration = entry.get("duration") or 0
+                        try:
+                            duration = int(duration)
+                        except (ValueError, TypeError):
+                            duration = 0
+
+                        # Skip videos longer than 10 minutes
+                        if duration > 600:
+                            continue
+
                         results.append({
                             "title": entry.get("title", ""),
                             "id": entry.get("id", ""),
                             "duration": f"{duration // 60}:{duration % 60:02d}" if duration else None,
-                            "filesize_mb": round(filesize / (1024 * 1024), 2) if filesize else None,
+                            # filesize not available with extract_flat — set to None
+                            "filesize_mb": None,
                         })
 
-                return results, entries, errors
+                    if not results:
+                        errors.append(DownloadError.MUSIC_NOT_FOUND)
+
+                    return results, entries, errors
 
             except Exception as e:
                 print("ERROR", e)
                 return [], [], [str(e)]
 
-        return await asyncio.to_thread(extract_search)
+        result = await asyncio.to_thread(extract_search)
 
-    def cache_get(self, key: str):
-        rec = _API_CACHE.get(key)
+        # Cache successful results
+        if result and result[0]:
+            self.cache_set(cache_key, result, _SEARCH_CACHE)
+
+        return result
+
+    def cache_get(self, key: str, store: Dict = None, ttl: int = CACHE_TTL_SECONDS):
+        if store is None:
+            store = _API_CACHE
+            ttl = CACHE_TTL_SECONDS
+        rec = store.get(key)
         if not rec:
             return None
         ts, value = rec
-        if time.time() - ts > CACHE_TTL_SECONDS:
-            _API_CACHE.pop(key, None)
+        if time.time() - ts > ttl:
+            store.pop(key, None)
             return None
         return value
 
-    def cache_set(self, key: str, value):
-        _API_CACHE[key] = (time.time(), value)
+    def cache_set(self, key: str, value, store: Dict = None):
+        if store is None:
+            store = _API_CACHE
+        store[key] = (time.time(), value)
 
     async def get_top_music(self, limit: int = 50) -> List[Dict[str, str]]:
         cache_key = f"lastfm:global:{limit}"
