@@ -32,13 +32,15 @@ def _cleanup_stale() -> None:
                 pass
 
 
-def _build_ydl_opts(output_path: str) -> dict:
-    """yt-dlp options optimised for speed:
-    - TV player client: avoids web throttling
-    - aria2c external downloader: 8 parallel connections per fragment
-    - concurrent_fragment_downloads: 5 parallel fragments
-    Falls back gracefully if aria2c is not installed.
+def _is_drm_error(e: Exception) -> bool:
+    return "DRM" in str(e) or "drm" in str(e).lower()
+
+
+def _build_ydl_opts(output_path: str, player_client: list[str] | None = None) -> dict:
+    """yt-dlp options optimised for speed.
+    player_client: list of clients to try, default ['tv', 'ios'].
     """
+    import shutil
     opts: dict = {
         "format": "251/bestaudio/best",
         "outtmpl": output_path,
@@ -47,20 +49,20 @@ def _build_ydl_opts(output_path: str) -> dict:
         "noplaylist": True,
         "socket_timeout": 15,
         "concurrent_fragment_downloads": 5,
-        "extractor_args": {"youtube": {"player_client": ["tv"]}},
+        "extractor_args": {
+            "youtube": {
+                "player_client": player_client or ["tv", "ios"],
+            }
+        },
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
             "preferredquality": "192",
         }],
     }
-
-    # Use aria2c if available — gives 3-5x speedup on large files
-    import shutil
     if shutil.which("aria2c"):
         opts["external_downloader"] = "aria2c"
         opts["external_downloader_args"] = ["-x", "8", "-s", "8", "-k", "1M"]
-
     return opts
 
 
@@ -88,6 +90,9 @@ class MusicDownloader:
     async def download_music_from_youtube(
         self, video_id: str
     ) -> Optional[tuple[str, str]]:
+        """Try downloading by video_id.
+        If DRM-protected, returns None immediately so the caller can try next result.
+        """
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         music_output_path = f"./media/audios/{get_audio_file_name()}"
         ydl_opts = _build_ydl_opts(music_output_path)
@@ -100,30 +105,84 @@ class MusicDownloader:
 
         try:
             info = await loop.run_in_executor(None, partial(_download_sync))
-            if not info:
-                return None
-
-            title = (
-                info["entries"][0]["title"]
-                if "entries" in info
-                else info.get("title", "")
-            )
-
-            final_path = music_output_path + ".mp3"
-            if not os.path.exists(final_path):
-                if os.path.exists(music_output_path):
-                    final_path = music_output_path
-                else:
-                    for ext in (".m4a", ".webm", ".opus", ".ogg"):
-                        candidate = music_output_path + ext
-                        if os.path.exists(candidate):
-                            final_path = candidate
-                            break
-
-            return final_path, title
         except Exception as e:
+            if _is_drm_error(e):
+                # Caller should try next video_id
+                print(f"DRM skip {video_id}: {e}")
+                return None
             print("ERROR in YouTube download:", e)
             return None
+
+        if not info:
+            return None
+
+        title = (
+            info["entries"][0]["title"]
+            if "entries" in info
+            else info.get("title", "")
+        )
+
+        final_path = music_output_path + ".mp3"
+        if not os.path.exists(final_path):
+            if os.path.exists(music_output_path):
+                final_path = music_output_path
+            else:
+                for ext in (".m4a", ".webm", ".opus", ".ogg"):
+                    candidate = music_output_path + ext
+                    if os.path.exists(candidate):
+                        final_path = candidate
+                        break
+
+        return final_path, title
+
+    async def download_music_by_query(
+        self, query: str
+    ) -> Optional[tuple[str, str]]:
+        """Last-resort: yt-dlp ytsearch, skips DRM results automatically."""
+        music_output_path = f"./media/audios/{get_audio_file_name()}"
+        ydl_opts = _build_ydl_opts(music_output_path)
+        ydl_opts["default_search"] = "ytsearch5"
+
+        loop = asyncio.get_running_loop()
+
+        def _run() -> dict:
+            with YoutubeDL(ydl_opts) as ydl:
+                return ydl.extract_info(query, download=True)
+
+        try:
+            info = await loop.run_in_executor(None, partial(_run))
+        except Exception as e:
+            print("ERROR in download_music_by_query:", e)
+            return None
+
+        if not info:
+            return None
+
+        # ytsearch5 returns entries list
+        entry = None
+        if "entries" in info:
+            for e in info["entries"]:
+                if e:
+                    entry = e
+                    break
+        else:
+            entry = info
+
+        if not entry:
+            return None
+
+        title = entry.get("title", "")
+        final_path = music_output_path + ".mp3"
+        if not os.path.exists(final_path):
+            if os.path.exists(music_output_path):
+                final_path = music_output_path
+            else:
+                for ext in (".m4a", ".webm", ".opus", ".ogg"):
+                    candidate = music_output_path + ext
+                    if os.path.exists(candidate):
+                        final_path = candidate
+                        break
+        return final_path, title
 
     # ── Prefetch helpers ──────────────────────────────────────────────
 
