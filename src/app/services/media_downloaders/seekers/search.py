@@ -20,17 +20,8 @@ CACHE_TTL_BY_PERIOD: Dict[str, int] = {
 REGION_LASTFM_COUNTRY: Dict[str, Optional[str]] = {
     "global":     None,
     "russia":     "russia",
-    "uzbekistan": None,  # Last.fm has poor data for UZ, use YouTube fallback
+    "uzbekistan": "uzbekistan",
     "english":    "united states",
-}
-
-# YouTube fallback queries for regions where Last.fm has poor data
-YOUTUBE_FALLBACK_QUERIES: Dict[str, Dict[str, str]] = {
-    "uzbekistan": {
-        "today": "uzbek music 2026 top hit",
-        "week":  "uzbek klip 2026 yangi",
-        "month": "uzbek qo'shiq 2026 eng yaxshi top",
-    },
 }
 
 MAX_TRACKS_PER_ARTIST = 3
@@ -145,66 +136,13 @@ class YouTubeSearcher:
         return result
 
     # ------------------------------------------------------------------ #
-    #  YouTube search fallback for regions with poor Last.fm data         #
-    # ------------------------------------------------------------------ #
-    async def _youtube_top_fallback(
-        self, region: str, period: str, limit: int
-    ) -> List[Dict[str, str]]:
-        queries = YOUTUBE_FALLBACK_QUERIES.get(region)
-        if not queries:
-            return []
-        query = queries.get(period, queries.get("today", ""))
-        if not query:
-            return []
-
-        def _fetch():
-            ydl_opts = {
-                "quiet": True,
-                "extract_flat": True,
-                "skip_download": True,
-                "ignoreerrors": True,
-                "socket_timeout": 15,
-            }
-            with YoutubeDL(ydl_opts) as ydl:
-                data = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
-                if not data:
-                    return []
-                entries = data.get("entries", []) or []
-                tracks = []
-                for entry in entries:
-                    title = entry.get("title", "")
-                    # Try to split "Artist - Title" format
-                    if " - " in title:
-                        artist, song_title = title.split(" - ", 1)
-                    elif " – " in title:
-                        artist, song_title = title.split(" – ", 1)
-                    else:
-                        artist = ""
-                        song_title = title
-                    # Clean up common suffixes
-                    for suffix in ["(Official Video)", "(Official Music Video)",
-                                   "(Official Audio)", "(Lyrics)", "[Official Video]",
-                                   "(Music Video)", "| Official Video",
-                                   "(Rasmiy klip)", "(Rasmiy video)"]:
-                        song_title = song_title.replace(suffix, "").strip()
-                        artist = artist.replace(suffix, "").strip()
-                    tracks.append({"artist": artist, "title": song_title})
-                return tracks
-
-        try:
-            return await asyncio.to_thread(_fetch)
-        except Exception as e:
-            print("ERROR _youtube_top_fallback:", e)
-            return []
-
-    # ------------------------------------------------------------------ #
     #  Legacy helper kept for backward compat (used by old /top handler)  #
     # ------------------------------------------------------------------ #
     async def get_top_music(self, limit: int = 50) -> List[Dict[str, str]]:
         return await self.get_top_by_region_period("global", "today", limit)
 
     # ------------------------------------------------------------------ #
-    #  Main method: region + period aware top chart                       #
+    #  Main method: region + period aware top chart (Last.fm only)        #
     # ------------------------------------------------------------------ #
     async def get_top_by_region_period(
         self,
@@ -212,19 +150,11 @@ class YouTubeSearcher:
         period: str = "today",
         limit: int = 50,
     ) -> List[Dict[str, str]]:
-        cache_key = f"top:{region}:{period}:{limit}"
+        cache_key = f"lastfm:{region}:{period}:{limit}"
         ttl = CACHE_TTL_BY_PERIOD.get(period, 3600)
         cached = self.cache_get(cache_key, ttl)
         if cached is not None:
             return cached
-
-        # Check if this region uses YouTube fallback
-        if region in YOUTUBE_FALLBACK_QUERIES:
-            result = await self._youtube_top_fallback(region, period, limit)
-            result = self._deduplicate_artists(result)
-            if result:
-                self.cache_set(cache_key, result)
-            return result
 
         country = REGION_LASTFM_COUNTRY.get(region)
 
