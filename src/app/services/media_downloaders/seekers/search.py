@@ -11,20 +11,8 @@ from src.app.utils.enums.error import DownloadError
 LASTFM_API_URL = "http://ws.audioscrobbler.com/2.0/"
 
 _API_CACHE: Dict[str, tuple] = {}
-CACHE_TTL_BY_PERIOD: Dict[str, int] = {
-    "today": 60 * 60,       # 1 hour — freshest
-    "week": 60 * 60 * 6,    # 6 hours
-    "month": 60 * 60 * 24,  # 24 hours
-}
+CACHE_TTL_SECONDS = 60 * 60
 
-REGION_LASTFM_COUNTRY: Dict[str, Optional[str]] = {
-    "global": None,
-    "russia": "russia",
-    "uzbekistan": "uzbekistan",
-    "english": "united states",
-}
-
-MAX_TRACKS_PER_ARTIST = 3
 
 class YouTubeSearcher:
 
@@ -56,20 +44,16 @@ class YouTubeSearcher:
         self,
         query: str,
         max_count: int = 5
-    ):
-        """Fast YouTube search using extract_flat for speed.
+    ) -> tuple[List[Dict[str, Any]], Any, List[str]]:
 
-        Returns (results_list, entries_list, errors_list).
-        Uses extract_flat=True to avoid fetching full video info — ~10x faster.
-        """
         def extract_search():
             ydl_opts = {
                 "quiet": True,
-                # Use True instead of "in_playlist" — compatible with all yt-dlp versions
-                # and required for ytsearch: scheme to be handled by yt-dlp's own extractor
-                "extract_flat": True,
                 "skip_download": True,
-                "socket_timeout": 10,
+                # extract_flat=True tells yt-dlp to handle ytsearch: scheme
+                # and return a flat list without downloading format manifests —
+                # this is required for ytsearchN: to work at all
+                "extract_flat": True,
             }
 
             search_query = f"ytsearch{max_count}:{query}"
@@ -80,32 +64,25 @@ class YouTubeSearcher:
                 with YoutubeDL(ydl_opts) as ydl:
                     data = ydl.extract_info(search_query, download=False)
 
-                    if not data:
-                        errors.append(DownloadError.MUSIC_NOT_FOUND)
-                        return [], [], errors
+                if not data:
+                    errors.append(DownloadError.MUSIC_NOT_FOUND)
+                    return [], [], errors
 
-                    entries = data.get("entries", []) or []
+                entries = data.get("entries", [])
 
-                    for entry in entries:
-                        if not entry:
-                            continue
-                        duration_secs = entry.get("duration") or 0
-                        # Skip if longer than 10 minutes
-                        if duration_secs > 600:
-                            continue
-                        duration_str = f"{duration_secs // 60}:{duration_secs % 60:02d}" if duration_secs else None
-                        results.append({
-                            "title": entry.get("title", ""),
-                            "id": entry.get("id", entry.get("url", "")),
-                            "duration": duration_str,
-                            "filesize_mb": None,
-                            "thumbnail": entry.get("thumbnail") or entry.get("thumbnails", [{}])[0].get("url", "") if entry.get("thumbnails") else "",
-                        })
+                for entry in entries:
+                    if not entry:
+                        continue
+                    duration = entry.get("duration") or 0
+                    # extract_flat doesn't return filesize — skip it
+                    results.append({
+                        "title": entry.get("title", ""),
+                        "id": entry.get("id", ""),
+                        "duration": f"{int(duration) // 60}:{int(duration) % 60:02d}" if duration else None,
+                        "filesize_mb": None,
+                    })
 
-                    if not results:
-                        errors.append(DownloadError.MUSIC_NOT_FOUND)
-
-                    return results, entries, errors
+                return results, entries, errors
 
             except Exception as e:
                 print("ERROR search_music:", e)
@@ -113,12 +90,12 @@ class YouTubeSearcher:
 
         return await asyncio.to_thread(extract_search)
 
-    def cache_get(self, key: str, ttl: int):
+    def cache_get(self, key: str):
         rec = _API_CACHE.get(key)
         if not rec:
             return None
         ts, value = rec
-        if time.time() - ts > ttl:
+        if time.time() - ts > CACHE_TTL_SECONDS:
             _API_CACHE.pop(key, None)
             return None
         return value
@@ -126,88 +103,68 @@ class YouTubeSearcher:
     def cache_set(self, key: str, value):
         _API_CACHE[key] = (time.time(), value)
 
-    @staticmethod
-    def _deduplicate_artists(tracks: List[Dict[str, str]], max_per_artist: int = MAX_TRACKS_PER_ARTIST) -> List[Dict[str, str]]:
-        """Limit tracks per artist to ensure diversity."""
-        artist_count: Dict[str, int] = {}
-        result = []
-        for t in tracks:
-            artist = t.get("artist", "").lower().strip()
-            if not artist:
-                result.append(t)
-                continue
-            count = artist_count.get(artist, 0)
-            if count < max_per_artist:
-                result.append(t)
-                artist_count[artist] = count + 1
-        return result
-
-    # ------------------------------------------------------------------ #
-    # Legacy helper kept for backward compat (used by old /top handler)  #
-    # ------------------------------------------------------------------ #
     async def get_top_music(self, limit: int = 50) -> List[Dict[str, str]]:
-        return await self.get_top_by_region_period("global", "today", limit)
-
-    # ------------------------------------------------------------------ #
-    # Main method: region + period aware top chart (Last.fm only)        #
-    # ------------------------------------------------------------------ #
-    async def get_top_by_region_period(
-        self,
-        region: str = "global",
-        period: str = "today",
-        limit: int = 50,
-    ) -> List[Dict[str, str]]:
-        cache_key = f"lastfm:{region}:{period}:{limit}"
-        ttl = CACHE_TTL_BY_PERIOD.get(period, 3600)
-        cached = self.cache_get(cache_key, ttl)
+        cache_key = f"lastfm:global:{limit}"
+        cached = self.cache_get(cache_key)
         if cached is not None:
             return cached
 
-        country = REGION_LASTFM_COUNTRY.get(region)
+        params = {
+            "method": "chart.gettoptracks",
+            "api_key": self.settings.lastfm_api_key,
+            "format": "json",
+            "limit": limit
+        }
 
-        if country is None:
-            # Global chart
-            params = {
-                "method": "chart.gettoptracks",
-                "api_key": self.settings.lastfm_api_key,
-                "format": "json",
-                "limit": limit,
-            }
-        else:
-            params = {
-                "method": "geo.gettoptracks",
-                "country": country,
-                "api_key": self.settings.lastfm_api_key,
-                "format": "json",
-                "limit": limit,
-            }
-
-        result: List[Dict[str, str]] = []
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(LASTFM_API_URL, params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                async with session.get(LASTFM_API_URL, params=params, timeout=15) as resp:
                     if resp.status != 200:
                         return []
                     data = await resp.json()
-
-                    tracks_data = data.get("tracks", {}).get("track", []) or []
-                    for t in tracks_data:
-                        artist_obj = t.get("artist")
-                        artist = artist_obj.get("name") if isinstance(artist_obj, dict) else (artist_obj or "")
-                        title = t.get("name") or ""
-                        result.append({"artist": artist, "title": title})
-
-        except Exception as e:
-            print("ERROR get_top_by_region_period:", e)
+        except Exception:
             return []
 
-        # Deduplicate — max 3 tracks per artist
-        result = self._deduplicate_artists(result)
+        tracks = data.get("tracks", {}).get("track", []) or []
+        result: List[Dict[str, str]] = []
+        for t in tracks:
+            artist_obj = t.get("artist")
+            artist = artist_obj.get("name") if isinstance(artist_obj, dict) else (artist_obj or "")
+            title = t.get("name") or ""
+            result.append({"artist": artist, "title": title})
 
-        # Fallback: if regional chart returned nothing, use global
-        if not result and country is not None:
-            result = await self.get_top_by_region_period("global", period, limit)
+        self.cache_set(cache_key, result)
+        return result
 
-        if result:
-            self.cache_set(cache_key, result)
+    async def get_top_by_region_period(self, region: str, period: str, limit: int = 50) -> List[Dict[str, str]]:
+        cache_key = f"lastfm:{region}:{period}:{limit}"
+        cached = self.cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        params = {
+            "method": "chart.gettoptracks",
+            "api_key": self.settings.lastfm_api_key,
+            "format": "json",
+            "limit": limit,
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(LASTFM_API_URL, params=params, timeout=15) as resp:
+                    if resp.status != 200:
+                        return []
+                    data = await resp.json()
+        except Exception:
+            return []
+
+        tracks = data.get("tracks", {}).get("track", []) or []
+        result: List[Dict[str, str]] = []
+        for t in tracks:
+            artist_obj = t.get("artist")
+            artist = artist_obj.get("name") if isinstance(artist_obj, dict) else (artist_obj or "")
+            title = t.get("name") or ""
+            result.append({"artist": artist, "title": title})
+
+        self.cache_set(cache_key, result)
         return result
