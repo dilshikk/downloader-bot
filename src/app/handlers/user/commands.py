@@ -1,4 +1,5 @@
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 
@@ -32,7 +33,7 @@ def _top_header(region: str, period: str) -> str:
     return (
         f"🏆 <b>Top Musiqalar</b>\n"
         f"{emoji} <b>{region.capitalize()}</b>  •  📅 <b>{period_label}</b>\n\n"
-        f"Trекni bosib yuklab oling 👇"
+        f"Trekni bosib yuklab oling 👇"
     )
 
 
@@ -90,9 +91,9 @@ async def top_filter_handler(callback: CallbackQuery, callback_data: TopFilterCD
             parse_mode="HTML",
             reply_markup=kb
         )
-    except Exception:
-        # Message text unchanged — just update keyboard
-        await callback.message.edit_reply_markup(reply_markup=kb)
+    except TelegramBadRequest:
+        # Message content is identical (user tapped same filter) — ignore
+        pass
 
     await callback.answer()
 
@@ -107,7 +108,10 @@ async def page_handler(callback: CallbackQuery, lang: str):
     page = int(page_s)
     kb = songs_keyboard(songs, page=page)
 
-    await callback.message.edit_text(text=_("Top popular songs"), reply_markup=kb)
+    try:
+        await callback.message.edit_text(text=_("Top popular songs"), reply_markup=kb)
+    except TelegramBadRequest:
+        pass
 
 
 @user_commands_router.callback_query(F.data.in_(["close", "delete_list_music"]))
