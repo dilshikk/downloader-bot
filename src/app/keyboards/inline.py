@@ -108,10 +108,9 @@ def top_chart_keyboard(
     period: str,
     page: int = 1,
 ) -> InlineKeyboardMarkup:
-    """Rich /top keyboard: region tabs, period tabs, track list, pagination."""
     inline_keyboard: List[List[InlineKeyboardButton]] = []
 
-    # ── Row 1: Region selector ──────────────────────────────────────────
+    # Row 1: Region selector
     region_row: List[InlineKeyboardButton] = []
     for key, label in REGION_LABELS.items():
         text = f"[ {label} ]" if key == region else label
@@ -123,7 +122,7 @@ def top_chart_keyboard(
         )
     inline_keyboard.append(region_row)
 
-    # ── Row 2: Period selector ──────────────────────────────────────────
+    # Row 2: Period selector
     period_row: List[InlineKeyboardButton] = []
     for key, label in PERIOD_LABELS.items():
         text = f"[ {label} ]" if key == period else label
@@ -135,7 +134,7 @@ def top_chart_keyboard(
         )
     inline_keyboard.append(period_row)
 
-    # ── Track list (10 per page) ────────────────────────────────────────
+    # Track list (10 per page)
     start = (page - 1) * 10
     end = start + 10
     for i, t in enumerate(tracks[start:end], start=start):
@@ -158,7 +157,7 @@ def top_chart_keyboard(
             ]
         )
 
-    # ── Pagination ──────────────────────────────────────────────────────
+    # Pagination
     total = len(tracks)
     total_pages = (total + 9) // 10 if total else 1
     nav: List[InlineKeyboardButton] = []
@@ -169,9 +168,7 @@ def top_chart_keyboard(
                 callback_data=TopFilterCD(region=region, period=period, page=page - 1).pack(),
             )
         )
-    nav.append(
-        InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop")
-    )
+    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
     if page < total_pages:
         nav.append(
             InlineKeyboardButton(
@@ -180,8 +177,6 @@ def top_chart_keyboard(
             )
         )
     inline_keyboard.append(nav)
-
-    # ── Close ───────────────────────────────────────────────────────────
     inline_keyboard.append([InlineKeyboardButton(text="❌", callback_data="close")])
 
     return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
@@ -409,7 +404,7 @@ def delite_channel_menu(channel_id: int, lang: str) -> InlineKeyboardMarkup:
 
 def delite_referral_menu(referral_id: str, lang: str) -> InlineKeyboardMarkup:
     _ = get_translator(lang).gettext
-    inline_keyboard = InlineKeyboardBuilder()
+    keyboard_builder = InlineKeyboardBuilder()
 
     sure = InlineKeyboardButton(
         text=_("Delete"),
@@ -419,6 +414,107 @@ def delite_referral_menu(referral_id: str, lang: str) -> InlineKeyboardMarkup:
         text=_("Not delete"),
         callback_data=ReferralCD(referral_id=referral_id, action=ReferalsActions.NOT_SURE_DELETE).pack(),
     )
-    inline_keyboard.row(sure, not_sure)
+    keyboard_builder.row(sure, not_sure)
 
-    return inline_keyboard.as_markup()
+    return keyboard_builder.as_markup()
+
+
+# ── Admin keyboards that were missing after inline.py rewrite ──────────
+
+def back_to_channel_menu(lang: str) -> InlineKeyboardMarkup:
+    """Back button to admin main menu (used in statistics)."""
+    _ = get_translator(lang).gettext
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.row(
+        InlineKeyboardButton(text=_("Back to admin menu"), callback_data="back_to_admin_menu")
+    )
+    return keyboard_builder.as_markup()
+
+
+def back_to_subscription_menu(lang: str) -> InlineKeyboardMarkup:
+    """Cancel / back button shown while adding a channel or bot."""
+    _ = get_translator(lang).gettext
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.row(
+        InlineKeyboardButton(text=_("Back to admin menu"), callback_data="back_to_admin_menu")
+    )
+    return keyboard_builder.as_markup()
+
+
+def add_chanel_url_defult(lang: str) -> InlineKeyboardMarkup:
+    """'Use default URL' button shown when adding a channel."""
+    _ = get_translator(lang).gettext
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.row(
+        InlineKeyboardButton(
+            text=_("Default url"),
+            callback_data=AddMandatorySubscriptionCD(
+                actions=AddMandatorySubscriptionActions.ADD_CHANNEL_URL_DEFULT
+            ).pack()
+        )
+    )
+    keyboard_builder.row(
+        InlineKeyboardButton(text=_("Back to admin menu"), callback_data="back_to_admin_menu")
+    )
+    return keyboard_builder.as_markup()
+
+
+def delite_bot_menu(username: str, lang: str) -> InlineKeyboardMarkup:
+    """Delete / cancel confirmation for bots."""
+    _ = get_translator(lang).gettext
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.row(
+        InlineKeyboardButton(
+            text=_("Delete"),
+            callback_data=BotCD(username=username, action=BotActions.SURE_DELETE).pack(),
+        ),
+        InlineKeyboardButton(
+            text=_("Not delete"),
+            callback_data=BotCD(username=username, action=BotActions.NOT_SURE_DELETE).pack(),
+        ),
+    )
+    return keyboard_builder.as_markup()
+
+
+def add_bot_url_defult(lang: str) -> InlineKeyboardMarkup:
+    """'Use default URL' button shown when adding a bot."""
+    _ = get_translator(lang).gettext
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.row(
+        InlineKeyboardButton(
+            text=_("Default url"),
+            callback_data=AddMandatorySubscriptionCD(
+                actions=AddMandatorySubscriptionActions.ADD_BOT_URL_DEFULT
+            ).pack()
+        )
+    )
+    keyboard_builder.row(
+        InlineKeyboardButton(text=_("Back to admin menu"), callback_data="back_to_admin_menu")
+    )
+    return keyboard_builder.as_markup()
+
+
+def menu_referrals_kb(referral_id: str, lang: str) -> InlineKeyboardMarkup:
+    """Single-referral action menu (delete + back)."""
+    _ = get_translator(lang).gettext
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.row(
+        InlineKeyboardButton(
+            text=_("Delete"),
+            callback_data=ReferralCD(referral_id=referral_id, action=ReferalsActions.DELETE_REFERAL).pack(),
+        )
+    )
+    keyboard_builder.row(
+        InlineKeyboardButton(text=_("Back to admin menu"), callback_data="back_to_admin_menu")
+    )
+    return keyboard_builder.as_markup()
+
+
+def back_to_admin_menu_keyboards(lang: str) -> InlineKeyboardMarkup:
+    """Simple back-to-admin-menu button."""
+    _ = get_translator(lang).gettext
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.row(
+        InlineKeyboardButton(text=_("Back to admin menu"), callback_data="back_to_admin_menu")
+    )
+    return keyboard_builder.as_markup()
