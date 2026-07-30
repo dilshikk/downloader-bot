@@ -162,10 +162,12 @@ async def fav_page_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Poo
 @user_commands_router.callback_query(F.data.startswith("fav_play:"))
 async def fav_play_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Pool):
     """Send favorite track — looks up full file_id from DB by index."""
-    _ = get_translator(lang).gettext
+    # Use a named variable to avoid shadowing the translator with unpacked prefix
+    gettext = get_translator(lang).gettext
     tg_id = callback.from_user.id
 
-    _, idx_s = callback.data.split(":")
+    # Split only on the first colon to safely extract the index
+    prefix, idx_s = callback.data.split(":", 1)
     idx = int(idx_s)
 
     db = FavoritesDataBaseActions(pool)
@@ -183,7 +185,7 @@ async def fav_play_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Poo
         from src.app.keyboards.inline import audio_keyboard
         await callback.message.reply_audio(
             audio=file_id,
-            caption=_("Downloaded by"),
+            caption=gettext("Downloaded by"),
             reply_markup=audio_keyboard(lang, file_id=file_id, title=title, is_favorite=True)
         )
     except Exception as e:
