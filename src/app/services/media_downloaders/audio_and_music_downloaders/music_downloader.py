@@ -40,16 +40,8 @@ def _is_drm_error(e: Exception) -> bool:
 
 def _build_ydl_opts(output_path: str) -> dict:
     """
-    yt-dlp options for speed and broad compatibility.
-
-    Format strategy:
-    - bestaudio: always available, yt-dlp picks best audio-only stream
-      (webm/opus where available, m4a/mp4a otherwise)
-    - No format codes like "251" — those are codec-specific and absent on
-      many regional / older uploads (causes "Requested format not available")
-    - No FFmpeg postprocessor — file served as-is, saves 2-5s per track
-
-    Player clients: web + android avoid DRM-heavy tv/ios clients.
+    yt-dlp options: best audio source → FFmpeg re-encode to MP3 128kbps.
+    Stable format for all devices and Telegram players.
     """
     import shutil
     opts: dict = {
@@ -62,10 +54,15 @@ def _build_ydl_opts(output_path: str) -> dict:
         "concurrent_fragment_downloads": 5,
         "extractor_args": {
             "youtube": {
+                # web + android: avoid DRM-heavy tv/ios clients (Topic channels)
                 "player_client": ["web", "android"],
             }
         },
-        # No postprocessors — skip FFmpeg conversion entirely
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "128",
+        }],
     }
     if shutil.which("aria2c"):
         opts["external_downloader"] = "aria2c"
@@ -74,8 +71,8 @@ def _build_ydl_opts(output_path: str) -> dict:
 
 
 def _resolve_path(base: str) -> Optional[str]:
-    """Return the actual downloaded file (no FFmpeg, native container)."""
-    for suffix in ("", ".webm", ".m4a", ".mp4", ".mp3", ".opus", ".ogg"):
+    """Return the actual file path after FFmpeg post-processing."""
+    for suffix in (".mp3", "", ".m4a", ".webm", ".opus", ".ogg"):
         candidate = base + suffix
         if os.path.exists(candidate):
             return candidate
@@ -107,7 +104,7 @@ class MusicDownloader:
         self, video_id: str
     ) -> Optional[tuple[str, str]]:
         """
-        Download audio for a single video_id.
+        Download and convert audio for a single video_id to MP3 128kbps.
         Returns None on DRM or any error so the caller can try the next result.
         """
         video_url = f"https://www.youtube.com/watch?v={video_id}"
