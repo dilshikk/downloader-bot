@@ -42,21 +42,10 @@ class MediaEffects:
 
             else:
                 return None
-            file_info = await self.bot.get_file(media_file_id)
 
-            async with aiohttp.ClientSession() as session:
-                url = f"https://api.telegram.org/bot{self.message.bot.token}/getFile?file_id={file_info.file_id}"
-                async with session.get(url) as resp:
-                    file_info = await resp.json()
-                    file_path = file_info['result']['file_path']
-
-                file_url = f"https://api.telegram.org/file/bot{self.message.bot.token}/{file_path}"
-                async with session.get(file_url) as response:
-                    if response.status == 200:
-                        async with aiofiles.open(media_input_path, "wb") as f:
-                            await f.write(await response.read())
-
-
+            # Use bot.download() — routes through the configured API server
+            # (http://127.0.0.1:8081), no hardcoded URLs, no 20 MB cap.
+            await self.bot.download(file=media_file_id, destination=media_input_path)
 
             if media_type in [MediaType.AUDIO, MediaType.VOICE]:
                 out_put_media_path = await self.media_effect_obj.audio_effects(media_input_path, effect_type)
@@ -76,4 +65,3 @@ class MediaEffects:
                     await asyncio.to_thread(os.remove, media_input_path)
             except Exception as ex:
                 print("Cleanup error:", ex)
-
