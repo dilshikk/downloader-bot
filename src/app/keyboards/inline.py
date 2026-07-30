@@ -31,6 +31,8 @@ PERIOD_LABELS: Dict[str, str] = {
 
 # Max bytes for music_name in callback_data (64 total - prefix "pop:" = 4 bytes)
 _MAX_MUSIC_NAME_BYTES = 59
+# Max bytes for title in MusicCD — leave room for "music:" prefix + video_id + ":"
+_MAX_TITLE_BYTES = 40
 
 
 def _safe_callback_value(text: str, max_bytes: int) -> str:
@@ -73,10 +75,15 @@ def music_keyboards(music_list: list) -> InlineKeyboardMarkup:
     keyboard_builder = InlineKeyboardBuilder()
 
     for i, music in enumerate(music_list, start=1):
+        raw_title = music.get("title") or ""
+        safe_title = _safe_callback_value(raw_title, _MAX_TITLE_BYTES)
         keyboard_builder.add(
             InlineKeyboardButton(
                 text=str(i),
-                callback_data=MusicCD(video_id=music["id"]).pack()
+                callback_data=MusicCD(
+                    video_id=music["id"],
+                    title=safe_title,
+                ).pack()
             )
         )
 
