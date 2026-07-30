@@ -28,14 +28,19 @@ class MusicDownloader:
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         music_output_path = f"./media/audios/{get_audio_file_name()}"
 
-        # Download best audio without re-encoding — much faster than FFmpeg mp3 conversion.
-        # Telegram accepts m4a/opus natively so no conversion is needed.
         yt_dlp_opts = {
+            # Prefer m4a (single file, no merge needed) → faster than webm which needs muxing
             "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
             "outtmpl": music_output_path + ".%(ext)s",
             "quiet": True,
             "no_warnings": True,
             "socket_timeout": 15,
+            # Download up to 5 fragments in parallel — biggest speed boost for DASH streams
+            "concurrent_fragment_downloads": 5,
+            # Skip writing thumbnails, descriptions, subtitles — saves time
+            "writethumbnail": False,
+            "writesubtitles": False,
+            "writeautomaticsub": False,
             # No postprocessors — skip FFmpeg re-encoding entirely
         }
 
