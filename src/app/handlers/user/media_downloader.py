@@ -43,6 +43,7 @@ async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, 
         await loader.start()
         media_effect = MediaEffects(message=call.message, bot=bot)
         out_put_media_path = None
+        effect_sent = False
 
         try:
             effect_str = callback_data.effect.value
@@ -87,6 +88,7 @@ async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, 
                     caption=_("Downloaded by"),
                     title="effect video"
                 )
+                effect_sent = True
             else:
                 audio_title = None
                 if call.message.audio and getattr(call.message.audio, "title", None):
@@ -106,6 +108,14 @@ async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, 
                     await sent.edit_reply_markup(
                         reply_markup=audio_keyboard(lang, file_id=real_file_id, title=title_text, is_favorite=False)
                     )
+                effect_sent = True
+
+            # Delete the "Choose effect" message after successfully sending the result
+            if effect_sent:
+                try:
+                    await call.message.delete()
+                except Exception:
+                    pass
 
         except Exception as e:
             print("ERROR in take_media_effect:", e)
