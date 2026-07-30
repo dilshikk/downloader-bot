@@ -1,9 +1,6 @@
 import asyncio
-import json
-import logging
 import os
-import shutil
-from concurrent.futures import ThreadPoolExecutor
+import time
 from typing import Optional
 
 from shazamio import Shazam
@@ -11,167 +8,152 @@ from yt_dlp import YoutubeDL
 
 from src.app.services.media_downloaders.utils.files import get_audio_file_name
 
-logger = logging.getLogger(__name__)
+# ── In-process prefetch store ──────────────────────────────────────────
+# Stores already-downloaded (file_path, title) keyed by YouTube video_id.
+# Consumed on first click → file is sent instantly instead of re-downloading.
+# TODO: replace with Redis + shared filesystem for multi-process deployments.
 
-# ---------------------------------------------------------------------------
-# aria2c
-# ---------------------------------------------------------------------------
-_ARIA2C_AVAILABLE = shutil.which("aria2c") is not None
+_prefetch_results: dict[str, tuple[str, str]] = {}
+_prefetch_tasks:   dict[str, asyncio.Task] = {}       # type: ignore[type-arg]
+_prefetch_ts:      dict[str, float] = {}
 
-_ARIA2C_OPTS = {
-    "external_downloader": "aria2c",
-    "external_downloader_args": {
-        "aria2c": [
-            "--max-connection-per-server=16",
-            "--split=16",
-            "--min-split-size=1M",
-            "--max-concurrent-downloads=1",
-            "--quiet=true",
-        ]
-    },
-}
+_PREFETCH_TTL = 300  # seconds; stale files are deleted automatically
 
-# ---------------------------------------------------------------------------
-# Semaphore — max N simultaneous YouTube downloads to avoid IP ban/throttle.
-# 3-5 is a safe range for a single VPS; raise only if you have proxy rotation.
-# ---------------------------------------------------------------------------
-_DOWNLOAD_SEMAPHORE = asyncio.Semaphore(4)
 
-# ---------------------------------------------------------------------------
-# Dedicated thread-pool for yt-dlp blocking calls.
-# Default ThreadPoolExecutor uses min(32, cpu+4) threads — fine for light load,
-# but under heavy traffic it becomes a bottleneck.  Set explicitly.
-# ---------------------------------------------------------------------------
-_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="ytdlp")
-
-# ---------------------------------------------------------------------------
-# Simple in-process cache: video_id -> (file_path, title)
-# Replace with Redis/Postgres for multi-process / persistent caching.
-#
-# Redis example:
-#   cached = await redis.get(f"track:{video_id}")
-#   if cached:
-#       return json.loads(cached)   # (file_path, title) or (file_id, title)
-# ---------------------------------------------------------------------------
-_TRACK_CACHE: dict[str, tuple[str, str]] = {}
+def _cleanup_stale() -> None:
+    """Remove prefetch entries older than TTL and delete their files."""
+    now = time.time()
+    stale = [vid for vid, ts in _prefetch_ts.items() if now - ts > _PREFETCH_TTL]
+    for vid in stale:
+        result = _prefetch_results.pop(vid, None)
+        _prefetch_tasks.pop(vid, None)
+        _prefetch_ts.pop(vid, None)
+        if result:
+            path, _ = result
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                pass
 
 
 class MusicDownloader:
     def __init__(self) -> None:
         self.shazam = Shazam()
 
-    async def find_song_name_by_video_audio_voice_video_note(self, media_path: str) -> str:
-        """Recognise a track via Shazam and return "Title Artist" string."""
+    # ── Shazam ────────────────────────────────────────────────────────
+
+    async def find_song_name_by_video_audio_voice_video_note(
+        self, media_path: str
+    ) -> str:
         try:
             out = await self.shazam.recognize(media_path)
             track = out.get("track", {})
             title = track.get("title", "")
             subtitle = track.get("subtitle", "")
             return f"{title} {subtitle}".strip()
-        except Exception:
-            logger.exception("Shazam recognition failed for %s", media_path)
+        except Exception as e:
+            print("ERROR in Shazam recognize:", e)
             return ""
+
+    # ── Core download ─────────────────────────────────────────────────
 
     async def download_music_from_youtube(
         self, video_id: str
     ) -> Optional[tuple[str, str]]:
-        """Download audio from YouTube and return (file_path, title).
-
-        Optimisations applied
-        ─────────────────────
-        1. In-process cache keyed by video_id — zero I/O for repeated requests.
-        2. asyncio.Semaphore(4) — limits concurrent YT connections to avoid ban.
-        3. noplaylist: True — skip playlist parsing on accidental playlist URLs.
-        4. format priority: 251 (webm/opus) → bestaudio — removes format scan
-           round-trip for the common android-client case.
-        5. ios fallback — if android fails, retry with ios client (better direct
-           URLs in some regions / less throttling).
-        6. Explicit ThreadPoolExecutor — predictable thread budget under load.
-        """
-        # ── 1. Cache hit ────────────────────────────────────────────────────
-        if video_id in _TRACK_CACHE:
-            logger.debug("Cache hit for video_id=%s", video_id)
-            return _TRACK_CACHE[video_id]
-
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         music_output_path = f"./media/audios/{get_audio_file_name()}"
+        yt_dlp_opts = {
+            "format": "251/bestaudio/best",
+            "outtmpl": music_output_path,
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "socket_timeout": 15,
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }],
+        }
 
-        def _make_opts(player_client: str) -> dict:
-            opts: dict = {
-                "extractor_args": {
-                    "youtube": {
-                        "player_client": [player_client],
-                    }
-                },
-                # Try format 251 (webm/opus) first — android client almost
-                # always exposes it, skipping the full format-list scan.
-                # Falls back to bestaudio/best if 251 is unavailable.
-                "format": "251/bestaudio/best",
-                "noplaylist": True,          # never expand playlist URLs
-                "outtmpl": music_output_path + ".%(ext)s",
-                "quiet": True,
-                "no_warnings": True,
-                "socket_timeout": 15,
-                "writethumbnail": False,
-                "writesubtitles": False,
-                "writeautomaticsub": False,
-            }
-            if _ARIA2C_AVAILABLE:
-                opts.update(_ARIA2C_OPTS)
-            else:
-                opts["concurrent_fragment_downloads"] = 5
-            return opts
-
-        def _download_sync(player_client: str) -> Optional[dict]:
-            with YoutubeDL(_make_opts(player_client)) as ydl:
+        def _download_sync() -> dict:
+            with YoutubeDL(yt_dlp_opts) as ydl:
                 return ydl.extract_info(video_url, download=True)
 
-        # ── 2. Semaphore guards concurrent download count ───────────────────
-        async with _DOWNLOAD_SEMAPHORE:
-            info: Optional[dict] = None
+        try:
+            info = await asyncio.to_thread(_download_sync)
+            if not info:
+                return None
 
-            # ── 4 & 5. Try android first, fall back to ios ──────────────────
-            for client in ("android", "ios"):
-                try:
-                    info = await asyncio.get_event_loop().run_in_executor(
-                        _EXECUTOR, _download_sync, client
-                    )
-                    if info:
-                        break
-                except Exception:
-                    logger.warning(
-                        "yt-dlp failed with client=%s for %s, trying next",
-                        client,
-                        video_id,
-                    )
+            title = (
+                info["entries"][0]["title"]
+                if "entries" in info
+                else info.get("title", "")
+            )
 
-        if not info:
-            logger.error("All yt-dlp clients failed for video_id=%s", video_id)
+            # yt-dlp + FFmpegExtractAudio appends .mp3
+            final_path = music_output_path + ".mp3"
+            if not os.path.exists(final_path):
+                if os.path.exists(music_output_path):
+                    final_path = music_output_path
+                else:
+                    for ext in (".m4a", ".webm", ".opus", ".ogg"):
+                        candidate = music_output_path + ext
+                        if os.path.exists(candidate):
+                            final_path = candidate
+                            break
+
+            return final_path, title
+        except Exception as e:
+            print("ERROR in YouTube download:", e)
             return None
 
-        entry = info["entries"][0] if "entries" in info else info
-        title: str = entry.get("title", "")
-        ext: str = entry.get("ext", "webm")
+    # ── Prefetch helpers ──────────────────────────────────────────────
 
-        final_path = f"{music_output_path}.{ext}"
+    async def _prefetch_worker(self, video_id: str) -> None:
+        try:
+            result = await self.download_music_from_youtube(video_id)
+            if result:
+                _prefetch_results[video_id] = result
+                _prefetch_ts[video_id] = time.time()
+        except Exception:
+            pass
+        finally:
+            _prefetch_tasks.pop(video_id, None)
 
-        if not os.path.exists(final_path):
-            for candidate_ext in ("webm", "m4a", "opus", "ogg", "mp3"):
-                candidate = f"{music_output_path}.{candidate_ext}"
-                if os.path.exists(candidate):
-                    final_path = candidate
-                    break
+    def prefetch(self, video_id: str) -> None:
+        """Fire-and-forget: start downloading video_id in background."""
+        _cleanup_stale()
+        if video_id in _prefetch_results or video_id in _prefetch_tasks:
+            return
+        task = asyncio.create_task(self._prefetch_worker(video_id))
+        _prefetch_tasks[video_id] = task
 
-        if not os.path.exists(final_path):
-            logger.error("Downloaded file not found at %s", final_path)
-            return None
-
-        result = (final_path, title)
-
-        # ── 1. Populate cache ────────────────────────────────────────────────
-        # TODO: replace with Redis for persistent/multi-process caching:
-        #   await redis.set(f"track:{video_id}", json.dumps(result))
-        _TRACK_CACHE[video_id] = result
-        logger.debug("Cached video_id=%s -> %s", video_id, final_path)
-
+    def consume_prefetch(self, video_id: str) -> Optional[tuple[str, str]]:
+        """Pop and return a completed prefetch result (or None)."""
+        result = _prefetch_results.pop(video_id, None)
+        _prefetch_ts.pop(video_id, None)
         return result
+
+    async def wait_and_consume(
+        self, video_id: str, timeout: float = 30.0
+    ) -> Optional[tuple[str, str]]:
+        """
+        1. Already done  → return instantly.
+        2. Still running → wait up to `timeout` seconds, then return.
+        3. Not started   → return None (caller should download normally).
+        """
+        if video_id in _prefetch_results:
+            return self.consume_prefetch(video_id)
+
+        task = _prefetch_tasks.get(video_id)
+        if task is None:
+            return None
+
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+        except (asyncio.TimeoutError, Exception):
+            pass
+
+        return self.consume_prefetch(video_id)
