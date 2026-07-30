@@ -10,7 +10,7 @@ class MusicCD(CallbackData, prefix="music"):
     video_id: str
 
 
-class TopPopularMusicCD(CallbackData, prefix="popular_musics"):
+class TopPopularMusicCD(CallbackData, prefix="pop"):
     music_name: str
 
 
