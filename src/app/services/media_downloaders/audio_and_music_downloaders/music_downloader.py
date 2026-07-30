@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Optional
 
 from shazamio import Shazam
@@ -26,17 +27,16 @@ class MusicDownloader:
     async def download_music_from_youtube(self, video_id: str) -> Optional[tuple[str, str]]:
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         music_output_path = f"./media/audios/{get_audio_file_name()}"
+
+        # Download best audio without re-encoding — much faster than FFmpeg mp3 conversion.
+        # Telegram accepts m4a/opus natively so no conversion is needed.
         yt_dlp_opts = {
-            "format": "bestaudio[ext=m4a]/bestaudio/best",
-            "outtmpl": music_output_path,
+            "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+            "outtmpl": music_output_path + ".%(ext)s",
             "quiet": True,
             "no_warnings": True,
             "socket_timeout": 15,
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
+            # No postprocessors — skip FFmpeg re-encoding entirely
         }
 
         def download_sync():
@@ -50,21 +50,20 @@ class MusicDownloader:
                 return None
 
             title = info["entries"][0]["title"] if "entries" in info else info.get("title", "")
+            ext = info["entries"][0].get("ext", "m4a") if "entries" in info else info.get("ext", "m4a")
 
-            # yt-dlp with FFmpegExtractAudio adds .mp3 extension
-            import os
-            final_path = music_output_path + ".mp3"
+            final_path = f"{music_output_path}.{ext}"
+
+            # Fallback: scan for any matching file if ext guess is wrong
             if not os.path.exists(final_path):
-                # Fallback: check without .mp3
-                if os.path.exists(music_output_path):
-                    final_path = music_output_path
-                else:
-                    # Try common extensions
-                    for ext in [".m4a", ".webm", ".opus", ".ogg"]:
-                        candidate = music_output_path + ext
-                        if os.path.exists(candidate):
-                            final_path = candidate
-                            break
+                for candidate_ext in ("m4a", "webm", "opus", "ogg", "mp3"):
+                    candidate = f"{music_output_path}.{candidate_ext}"
+                    if os.path.exists(candidate):
+                        final_path = candidate
+                        break
+
+            if not os.path.exists(final_path):
+                return None
 
             return final_path, title
         except Exception as e:
