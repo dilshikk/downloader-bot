@@ -25,8 +25,8 @@ msgstr ""
 "• <b>TikTok</b> — suv belgisiz video + musiqa, audio\n"
 "• <b>YouTube</b> — videolar va shorts + musiqa, audio\n\n"
 "🎵 Shazam funksiyasi:\n"
-"• Qo‘shiq nomi yoki ijrochi ismi\n"
-"• Qo‘shiq matni\n"
+"• Qo'shiq nomi yoki ijrochi ismi\n"
+"• Qo'shiq matni\n"
 "• Ovozli xabar\n"
 "• Video\n"
 "• Audio\n"
@@ -36,115 +36,119 @@ msgstr ""
 "•🏟 Konsert zali\n"
 "•⚡️ Tezlashtirilgan format\n"
 "•🐢 Sekinlashtirilgan format\n\n"
-"🚀 Yuklab olmoqchi bo‘lgan videoga havolani yuboring!"
+"🚀 Yuklab olmoqchi bo'lgan videoga havolani yuboring!"
 
 #: src/app/handlers/admin/commands.py:17
 #: src/app/handlers/admin/menu/menu.py:107
 msgid "Admin main menu title"
 msgstr ""
-" <b>Admin menyu:</b>\n"
+"📋 <b>Admin panel</b>\n"
 "\n"
-"Pastdagilardan kerakli bo‘limni tanlang."
+"Boshqaruv bo'limini tanlang:"
 
 #: src/app/handlers/admin/menu/bot.py:40
 msgid "Delete bot choose"
-msgstr "Botni o'chirishga aminmisiz"
+msgstr "🗑 Ushbu botni o'chirishga aminmisiz?"
 
 #: src/app/handlers/admin/menu/bot.py:47
 #: src/app/handlers/admin/menu/channel.py:74
 msgid "Passed Delete"
-msgstr "✔️ Bot muvafaqiyatli o'chirildi"
+msgstr "✔️ Muvaffaqiyatli o'chirildi"
 
 #: src/app/handlers/admin/menu/bot.py:75
 msgid "Bot set up menu title"
-msgstr "Pastdagilardan birini tanlang"
+msgstr "⚙️ Bot sozlamalari\n\nAmalni tanlang:"
 
 #: src/app/handlers/admin/menu/bot.py:96
 msgid "Send bot username"
-msgstr "Bot usernamesini yuboring"
+msgstr "Bot usernameni yuboring (masalan: @mybot)"
 
 #: src/app/handlers/admin/menu/bot.py:108
 msgid "Send bot username in format: @username"
-msgstr "Bot usernamesini @username shu formatda yuboring"
+msgstr "⚠️ Noto'g'ri format. Username @username ko'rinishida bo'lishi kerak"
 
 #: src/app/handlers/admin/menu/bot.py:115
 msgid "Send name"
-msgstr "Botga nom bering"
+msgstr "Bot uchun ko'rsatiladigan nom kiriting"
 
 #: src/app/handlers/admin/menu/bot.py:125
 msgid "Forward only text"
-msgstr "Faqat text yuboring"
+msgstr "⚠️ Faqat matn yuboring"
 
 #: src/app/handlers/admin/menu/bot.py:132
 #: src/app/handlers/admin/menu/channel.py:127
 msgid "Send url"
-msgstr "✔️ Url yuboring"
+msgstr "Bot yoki kanal havolasini yuboring"
 
 #: src/app/handlers/admin/menu/bot.py:151
 #: src/app/handlers/admin/menu/bot.py:192
 msgid "Bot already exists"
-msgstr "✔️ Bot allaqochon qo'shilgan"
+msgstr "⚠️ Bu bot allaqachon qo'shilgan"
 
 #: src/app/handlers/admin/menu/bot.py:165
 msgid "Bot successfully added!"
-msgstr "✔️ Bot muvafaqiyatli qo'shildi"
+msgstr "✔️ Bot muvaffaqiyatli qo'shildi!"
 
 #: src/app/handlers/admin/menu/broadcasting.py:23
 msgid "Broadcasting start message"
-msgstr "Elon tarqatish boshlandi"
+msgstr ""
+"📢 <b>Ommaviy xabar yuborish</b>\n"
+"\n"
+"Barcha foydalanuvchilarga yuboriladigan xabarni jo'nating.\n"
+"Qo'llab-quvvatlanadi: matn, rasm, video, audio, hujjatlar."
 
 #: src/app/handlers/admin/menu/broadcasting.py:37
 msgid "Poll not allowed"
-msgstr "So'rovnomaga ruxsat berilmagan"
+msgstr "⚠️ So'rovnomalar tarqatish uchun qo'llab-quvvatlanmaydi"
 
 #: src/app/handlers/admin/menu/broadcasting.py:49
 msgid "Message received confirm broadcasting"
-msgstr "Qabul qilingan xabar efirga uzatilishini tasdiqladi"
+msgstr "✅ Xabar qabul qilindi. Tarqatishni boshlashni tasdiqlang:"
 
 #: src/app/handlers/admin/menu/broadcasting.py:54
 msgid "Cancel"
-msgstr "Bekor qilish"
+msgstr "❌ Bekor qilish"
 
 #: src/app/handlers/admin/menu/broadcasting.py:58
 msgid "Confirm"
-msgstr "Boshlash"
+msgstr "✅ Tarqatishni boshlash"
 
 #: src/app/handlers/admin/menu/broadcasting.py:77
 msgid "Broadcasting cancelled"
-msgstr "Bekor qilindi"
+msgstr "❌ Tarqatish bekor qilindi"
 
 #: src/app/handlers/admin/menu/broadcasting.py:96
 msgid "Message not found"
-msgstr "Xabar topilmadi"
+msgstr "⚠️ Tarqatish uchun xabar topilmadi"
 
 #: src/app/handlers/admin/menu/broadcasting.py:98
 #: src/app/services/broadcaster.py:96
 msgid "Broadcasting started"
-msgstr "Elon tarqatish boshlandi"
+msgstr "⏳ Tarqatish boshlandi..."
 
 #: src/app/handlers/admin/menu/broadcasting.py:115
 msgid "Broadcasting completed"
-msgstr "Elon tarqatish tugadi"
+msgstr "✔️ Tarqatish yakunlandi"
 
 #: src/app/handlers/admin/menu/broadcasting.py:118
 msgid "Blocked users count"
-msgstr "Bloklagan foydalanuvchilar"
+msgstr "🚫 Botni blokladi"
 
 #: src/app/handlers/admin/menu/broadcasting.py:120
 msgid "Deleted users count"
-msgstr "O'chirlgan Foydalanuvchilar"
+msgstr "🗑 O'chirilgan hisoblar"
 
 #: src/app/handlers/admin/menu/broadcasting.py:122
 msgid "Limited users count"
-msgstr "Cheklangan foydalanuvchilar soni"
+msgstr "⚠️ Cheklangan hisoblar"
 
 #: src/app/handlers/admin/menu/broadcasting.py:124
 msgid "Deactivated users count"
-msgstr "O'chirgan foydalanuvchilar soni"
+msgstr "💤 Deaktivlangan hisoblar"
 
 #: src/app/handlers/admin/menu/broadcasting.py:127
 msgid "All messages delivered successfully"
-msgstr "✔️ Hamma xabarlar muvafaqiyatli yetqazildi"
+msgstr "✔️ Barcha xabarlar muvaffaqiyatli yetkazildi"
 
 #: src/app/handlers/admin/menu/broadcasting.py:135
 #, python-brace-format
@@ -154,102 +158,114 @@ msgstr "Xatolik: {}"
 #: src/app/handlers/admin/menu/broadcasting.py:139
 #: src/app/services/broadcaster.py:120
 msgid "Broadcasting error"
-msgstr "⚠️ Elon tarqatishda xatolik yuzberdi"
+msgstr "⚠️ Tarqatishda xatolik"
 
 #: src/app/handlers/admin/menu/broadcasting.py:140
 #, python-brace-format
 msgid "Unexpected error: {error}"
-msgstr "Xatolik: {}"
+msgstr "⚠️ Kutilmagan xatolik: {}"
 
 #: src/app/handlers/admin/menu/channel.py:64
 msgid "Delete channel choose"
-msgstr "🗑 Kanalni o'chirishga aminmisiz"
+msgstr "🗑 Ushbu kanalni o'chirishga aminmisiz?"
 
 #: src/app/handlers/admin/menu/channel.py:87
 msgid "Channel set up menu title"
 msgstr ""
-"📢 Kanal haqida to‘liq ma’lumot\n\n"
+"📢 <b>Kanal haqida ma'lumot</b>\n\n"
 "🆔 ID: <code>{}</code>\n"
 "📛 Nomi: <b>{}</b>\n"
 "🔗 Username: <b>@{}</b>\n"
-"📶 Status: <code>{}</code>\n"
+"📶 Obuna holati: <code>{}</code>\n"
 "🚀 Havola: https://t.me/{}\n\n"
+"Amalni tanlang:"
 
 #: src/app/handlers/admin/menu/channel.py:108
 msgid "Send post for channel or group"
-msgstr "🚀 Kanal yoki gruppadan post yubring"
+msgstr "📨 Kerakli kanal yoki guruhdan istalgan xabarni forward qiling"
 
 #: src/app/handlers/admin/menu/channel.py:120
 msgid "Forward only from chat"
-msgstr "⚠️ Faqat kanal yoki gruppadan post yubring"
+msgstr "⚠️ Iltimos, faqat kanal yoki guruhdan xabar forward qiling"
 
 #: src/app/handlers/admin/menu/channel.py:147
 #: src/app/handlers/admin/menu/channel.py:191
 msgid "Channel already exists"
-msgstr "✔️ Kanal allaqachon qo'shilgan"
+msgstr "⚠️ Bu kanal allaqachon qo'shilgan"
 
 #: src/app/handlers/admin/menu/channel.py:164
 msgid "Channel successfully added!"
-msgstr "✔️ Kanal muvafaqiyatli qo'shildi"
+msgstr "✔️ Kanal muvaffaqiyatli qo'shildi!"
 
 #: src/app/handlers/admin/menu/helpers.py:11
 #: src/app/handlers/admin/menu/menu.py:53
 msgid "Mandatory subscriptions menu title"
-msgstr "📬 Pastdagilardan birini tanlang"
+msgstr ""
+"📋 <b>Majburiy obunalar</b>\n"
+"\n"
+"Foydalanuvchilar obuna bo'lishi shart bo'lgan\n"
+"kanal va botlarni bu yerda boshqaring."
 
 #: src/app/handlers/admin/menu/helpers.py:24
 #: src/app/handlers/admin/menu/menu.py:71
 #: src/app/handlers/admin/menu/referal.py:50
 msgid "Referals menu title"
-msgstr "📬 Pastdagilardan birini tanlang"
+msgstr ""
+"🔗 <b>Referallar</b>\n"
+"\n"
+"Referalni boshqarish uchun tanlang yoki yangi qo'shing."
 
 #: src/app/handlers/admin/menu/helpers.py:24
 #: src/app/handlers/admin/menu/menu.py:73
 #: src/app/handlers/admin/menu/referal.py:52
 msgid "Empty referals menu title"
-msgstr "📥 Siz hali hechnima qo'shmagansiz"
+msgstr "📭 Hali referal yo'q. Birinchisini qo'shish uchun ➕ ni bosing."
 
 #: src/app/handlers/admin/menu/menu.py:42
 msgid "Coming soon..."
-msgstr "⏰ Bir oz kuting"
+msgstr "⏰ Bu bo'lim hali ishlab chiqilmoqda"
 
 #: src/app/handlers/admin/menu/menu.py:55
 msgid "Empty mandatory subscriptions menu title"
-msgstr "📥 Siz hali hechnima qo'shmagansiz"
+msgstr "📭 Hali obuna yo'q. Kanal yoki bot qo'shish uchun ➕ ni bosing."
 
 #: src/app/handlers/admin/menu/menu.py:87
 msgid "users statistics format text"
 msgstr ""
-"👥 Foydalanuvchilar qo'shilishi statistikasi\n\n"
-"Bugun qo'shilganlar: {}\n"
-"1 Hafta ichida qo'shilganlar: {}\n"
-"1 oy ichida qo'shilganlar: {}\n"
-"1 Yil ichida qo'shilganlar: {}\n"
-"Jami qo'shilganlar soni: {}"
+"👥 <b>Foydalanuvchilar statistikasi</b>\n\n"
+"📅 Bugun: <b>{}</b>\n"
+"📆 Hafta ichida: <b>{}</b>\n"
+"🗓 Oy ichida: <b>{}</b>\n"
+"📊 Yil ichida: <b>{}</b>\n"
+"👤 Jami: <b>{}</b>"
 
 #: src/app/handlers/admin/menu/referal.py:38
 msgid "Delete referal choose"
-msgstr "🗑 Referalni o'chirishga aminmisiz"
+msgstr "🗑 Ushbu referalni o'chirishga aminmisiz?"
 
 #: src/app/handlers/admin/menu/referal.py:45
 msgid "Delete referal passed"
-msgstr "🗑 Referal muvafaqiyatli o'chirildi"
+msgstr "✔️ Referal muvaffaqiyatli o'chirildi"
 
 #: src/app/handlers/admin/menu/referal.py:63
 msgid "Get referal name"
-msgstr "📬 Referalga nom bering"
+msgstr "Referal uchun nom kiriting (ichki foydalanish uchun)"
 
 #: src/app/handlers/admin/menu/referal.py:74
 msgid "Referal formant info"
-msgstr "Referal haqida malumot\n\nNomi: {}\nChaqiragn foydalanuvchilari: {}referal urli: https://t.me/ttnowatermark_bot?start={}"
+msgstr ""
+"🔗 <b>Referal haqida ma'lumot</b>\n\n"
+"📛 Nomi: <b>{}</b>\n"
+"👥 Taklif qilingan foydalanuvchilar: <b>{}</b>\n"
+"🚀 Referal havolasi: https://t.me/ttnowatermark_bot?start={}"
 
 #: src/app/handlers/admin/menu/referal.py:85
 msgid "Send only text"
-msgstr "Faqat text yuboring"
+msgstr "⚠️ Faqat matn yuboring"
 
 #: src/app/handlers/admin/menu/referal.py:93
 msgid "Referral added successfully!"
-msgstr "✔️ Referal muvafaqiatli qo'shildi"
+msgstr "✔️ Referal muvaffaqiyatli qo'shildi!"
 
 #: src/app/handlers/user/commands.py:15
 msgid "About"
@@ -257,7 +273,7 @@ msgstr "Murojat uchun @hikmatilloyev_j"
 
 #: src/app/handlers/user/commands.py:22
 msgid "Media effect"
-msgstr "Pastdagi Effektlardan birini tanlang"
+msgstr "Pastdagi effektlardan birini tanlang"
 
 #: src/app/handlers/user/commands.py:42
 msgid "Top songs"
@@ -284,7 +300,7 @@ msgstr "⚠️ Effekt turi topilmadi"
 #: src/app/handlers/user/media_downloader.py:145
 msgid "Media type not found"
 msgstr ""
-"⚠️ Xato media turi.\n"
+"⚠️ Noto'g'ri media turi.\n"
 "Iltimos video yoki audio yuboring"
 
 #: src/app/handlers/user/media_downloader.py:71
@@ -292,8 +308,8 @@ msgstr ""
 #: src/app/handlers/user/media_downloader.py:154
 msgid "Error in processed media"
 msgstr ""
-"⚠️ Qayta ishlashda xatolik yuzberdi.\n"
-"Iltimos qaytatdan urinib ko'ring"
+"⚠️ Qayta ishlashda xatolik yuz berdi.\n"
+"Iltimos qaytadan urinib ko'ring"
 
 #: src/app/handlers/user/media_downloader.py:77
 #: src/app/handlers/user/media_downloader.py:91
@@ -320,12 +336,12 @@ msgstr "⚠️ Effekt turi topilmadi"
 #: src/app/handlers/user/media_downloader.py:179
 msgid "Error in processed"
 msgstr ""
-"⚠️ Qayta ishlashda xatolik yuzberdi.\n"
-"Iltimos qaytatdan urinib ko'ring"
+"⚠️ Qayta ishlashda xatolik yuz berdi.\n"
+"Iltimos qaytadan urinib ko'ring"
 
 #: src/app/handlers/user/media_downloader.py:228
 msgid "File is so big"
-msgstr "⚠️ Fayl hajmi 20MB da katta"
+msgstr "⚠️ Fayl hajmi 20MB dan katta"
 
 #: src/app/handlers/user/media_downloader.py:254
 msgid "Highlight is loading"
@@ -353,14 +369,14 @@ msgstr "📥 Rasm yuklanmoqda..."
 #: src/app/handlers/user/media_downloader.py:426
 msgid "Wrong url"
 msgstr ""
-"⚠️ Siz yuborgan havola bo'yicha video topilmadi.\n\n"
+"⚠️ Yuborgan havolangiz bo'yicha video topilmadi.\n\n"
 "📥 Video yuklab olish tarmoqlari:\n"
 "• <b>Instagram</b> — post va IGTV + musiqa, audio\n"
 "• <b>TikTok</b> — suv belgisiz video + musiqa, audio\n"
 "• <b>YouTube</b> — videolar va shorts + musiqa, audio\n\n"
 "🎵 Shazam funksiyasi:\n"
-"• Qo‘shiq nomi yoki ijrochi ismi\n"
-"• Qo‘shiq matni\n"
+"• Qo'shiq nomi yoki ijrochi ismi\n"
+"• Qo'shiq matni\n"
 "• Ovozli xabar\n"
 "• Video\n"
 "• Audio\n"
@@ -388,8 +404,8 @@ msgstr "📥 Musiqa yuklanmoqda..."
 #: src/app/handlers/user/media_downloader.py:487
 msgid "Error in loading"
 msgstr ""
-"⚠️ Yuklabolishda xatolik yuzberdi.\n"
-"Iltimos qaytatdan urinib ko'ring"
+"⚠️ Yuklab olishda xatolik yuz berdi.\n"
+"Iltimos qaytadan urinib ko'ring"
 
 #: src/app/handlers/user/media_downloader.py:528
 #: src/app/handlers/user/media_downloader.py:531
@@ -398,8 +414,8 @@ msgstr ""
 #: src/app/services/media_downloaders/all_downloader.py:124
 msgid "Error in loading music"
 msgstr ""
-"⚠️ Musiqani yuklashda xatolik yuzberdi.\n"
-"Iltimos qaytatdan urinib ko'ring"
+"⚠️ Musiqa yuklab olishda xatolik yuz berdi.\n"
+"Iltimos qaytadan urinib ko'ring"
 
 #: src/app/handlers/user/media_downloader.py:614
 msgid "Audio is loading"
@@ -408,22 +424,22 @@ msgstr "📥 Audio yuklanmoqda..."
 #: src/app/handlers/user/media_downloader.py:636
 msgid "Error in loading audio"
 msgstr ""
-"⚠️ Audioni yuklashda xatolik yuzberdi.\n"
-" Iltimos qaytatdan urinib ko'ring"
+"⚠️ Audio yuklab olishda xatolik yuz berdi.\n"
+"Iltimos qaytadan urinib ko'ring"
 
 #: src/app/handlers/user/media_downloader.py:655
 msgid "Audio not found"
-msgstr "⚠️ Audio toapilmadi"
+msgstr "⚠️ Audio topilmadi"
 
 #: src/app/handlers/user/media_downloader.py:661
 msgid "Choose effect"
-msgstr "🎛 Pastdagi effectlardan birini tanlang"
+msgstr "🎛 Pastdagi effektlardan birini tanlang"
 
 #: src/app/handlers/user/media_downloader.py:669
 msgid "Error"
 msgstr ""
-"⚠️ Yuklab olishda xatolik yuzberdi.\n"
-"Iltimos qaytatdan urinib ko'ring"
+"⚠️ Yuklab olishda xatolik yuz berdi.\n"
+"Iltimos qaytadan urinib ko'ring"
 
 #: src/app/keyboards/inline.py:20
 msgid "Download Music"
@@ -431,7 +447,7 @@ msgstr "📥 Musiqani yuklab olish"
 
 #: src/app/keyboards/inline.py:102
 msgid "effektlar"
-msgstr "🎛 Effectlar"
+msgstr "🎛 Effektlar"
 
 #: src/app/keyboards/inline.py:112
 msgid "Konsert"
@@ -451,31 +467,31 @@ msgstr "⚡️ Tezlashtirilgan"
 
 #: src/app/keyboards/inline.py:151
 msgid "Mandatory subscription"
-msgstr "Majburiy obunalr"
+msgstr "📋 Majburiy obunalar"
 
 #: src/app/keyboards/inline.py:159
 msgid "Referals"
-msgstr "Referallar"
+msgstr "🔗 Referallar"
 
 #: src/app/keyboards/inline.py:167
 msgid "Statistics"
-msgstr "Statistika"
+msgstr "📊 Statistika"
 
 #: src/app/keyboards/inline.py:175
 msgid "Broadcast"
-msgstr "Elon tarqatish"
+msgstr "📢 Xabar tarqatish"
 
 #: src/app/keyboards/inline.py:181
 msgid "Quit from admin menu"
-msgstr "↩️ Orqaga"
+msgstr "↩️ Admin paneldan chiqish"
 
 #: src/app/keyboards/inline.py:196
 msgid "Channels start border"
-msgstr "🗂 Kanallar"
+msgstr "── 📢 Kanallar ──"
 
 #: src/app/keyboards/inline.py:217
 msgid "Bots start border"
-msgstr "🗂 Botlar"
+msgstr "── 🤖 Botlar ──"
 
 #: src/app/keyboards/inline.py:238
 msgid "Add channel"
@@ -488,7 +504,7 @@ msgstr "➕ Bot qo'shish"
 #: src/app/keyboards/inline.py:253 src/app/keyboards/inline.py:290
 #: src/app/keyboards/inline.py:503
 msgid "Back to admin menu"
-msgstr "↩️ Orqaga"
+msgstr "↩️ Menyuga qaytish"
 
 #: src/app/keyboards/inline.py:279
 msgid "Add referal"
@@ -496,15 +512,15 @@ msgstr "➕ Referal qo'shish"
 
 #: src/app/keyboards/inline.py:305 src/app/keyboards/inline.py:340
 msgid "Delete in mandatory sub"
-msgstr "🗑 Majburiy obunadan o'chirish"
+msgstr "🔕 Majburiydan olib tashlash"
 
 #: src/app/keyboards/inline.py:312
 msgid "Add in mandatry sub"
-msgstr "📬 Majburiy obunaga qo'shish"
+msgstr "🔔 Majburiyga qo'shish"
 
 #: src/app/keyboards/inline.py:319
 msgid "Delete channel"
-msgstr "Kanalni o'chirish"
+msgstr "🗑 Kanalni o'chirish"
 
 #: src/app/keyboards/inline.py:325 src/app/keyboards/inline.py:360
 #: src/app/keyboards/inline.py:454
@@ -513,21 +529,21 @@ msgstr "↩️ Orqaga"
 
 #: src/app/keyboards/inline.py:348
 msgid "Add in mandatory sub"
-msgstr "📬 Majburiy obunaga qo'shish"
+msgstr "🔔 Majburiyga qo'shish"
 
 #: src/app/keyboards/inline.py:356
 msgid "Delete bot"
-msgstr "Botni o'chirish"
+msgstr "🗑 Botni o'chirish"
 
 #: src/app/keyboards/inline.py:374 src/app/keyboards/inline.py:396
 #: src/app/keyboards/inline.py:413 src/app/keyboards/inline.py:432
 msgid "Delete"
-msgstr "O'chirish"
+msgstr "✅ Ha, o'chirish"
 
 #: src/app/keyboards/inline.py:380 src/app/keyboards/inline.py:400
 #: src/app/keyboards/inline.py:439
 msgid "Not delete"
-msgstr "Yo'q"
+msgstr "❌ Yo'q, bekor qilish"
 
 #: src/app/keyboards/inline.py:419
 msgid "back"
@@ -535,19 +551,19 @@ msgstr "↩️ Orqaga"
 
 #: src/app/keyboards/inline.py:463
 msgid "Back to subscriptions menu"
-msgstr "↩️ Orqaga"
+msgstr "↩️ Obunalarga qaytish"
 
 #: src/app/keyboards/inline.py:475
 msgid "Defult Channel Url"
-msgstr "Odatiy url"
+msgstr "🔗 Standart URL ishlatish"
 
 #: src/app/keyboards/inline.py:489
 msgid "Defult Bot Url"
-msgstr "Odatiy url"
+msgstr "🔗 Standart URL ishlatish"
 
 #: src/app/services/broadcaster.py:82
 msgid "Broadcasting message or album required"
-msgstr "Xabar yoki albomni efirga uzatish talab qilinadi"
+msgstr "Xabar yoki albom tarqatish uchun talab qilinadi"
 
 #: src/app/services/broadcaster.py:84
 msgid "Choose only one: message or album"
@@ -556,12 +572,12 @@ msgstr "Faqat bittasini tanlang: xabar yoki albom"
 #: src/app/services/broadcaster.py:112
 #, python-brace-format
 msgid "Broadcasting completed: {sent} sent, {failed} failed, {batches} batches"
-msgstr "Translyatsiya tugallandi: {} yuborildi, {} amalga oshmadi, {} pachkalar"
+msgstr "Tarqatish yakunlandi: {} yuborildi, {} xato, {} paket"
 
 #: src/app/services/broadcaster.py:123
 #, python-brace-format
 msgid "Broadcasting error: {error}"
-msgstr "⚠️ Elon tarqatish xatosi: {}"
+msgstr "⚠️ Tarqatish xatosi: {}"
 
 #: src/app/services/broadcaster.py:177
 msgid "message sent"
@@ -569,7 +585,7 @@ msgstr "Xabar yuborildi"
 
 #: src/app/services/broadcaster.py:184
 msgid "deactivated"
-msgstr "O'chgan"
+msgstr "Deaktivlangan"
 
 #: src/app/services/broadcaster.py:187
 msgid "limited"
@@ -577,7 +593,7 @@ msgstr "Cheklangan"
 
 #: src/app/services/broadcaster.py:190
 msgid "deleted"
-msgstr "O'chirlirgan"
+msgstr "O'chirilgan"
 
 #: src/app/services/broadcaster.py:193
 msgid "blocked"
@@ -586,7 +602,7 @@ msgstr "Bloklangan"
 #: src/app/services/broadcaster.py:198
 #, python-brace-format
 msgid "[ID:{user_id}] Flood limit. Sleeping {seconds}s"
-msgstr "[ID:{}] toshqini chegarasi. Uyqu {soniya}"
+msgstr "[ID:{}] Flood limit. Kutish {} soniya"
 
 #: src/app/services/broadcaster.py:207
 msgid "Telegram error"
@@ -594,7 +610,7 @@ msgstr "⚠️ Telegram xatoligi"
 
 #: src/app/services/broadcaster.py:211
 msgid "Unexpected error"
-msgstr "⚠️ Kutilmagan xato"
+msgstr "⚠️ Kutilmagan xatolik"
 
 #: src/app/services/broadcaster.py:243
 #, python-brace-format
@@ -612,23 +628,22 @@ msgstr "Jami qayta ishlangan: {} foydalanuvchi"
 
 #: src/app/services/broadcaster.py:324
 msgid "Preview delete error"
-msgstr "⚠️ Oldindan ko'rishni o'chirishda xatolik yuz berdi"
+msgstr "⚠️ Oldindan ko'rishni o'chirishda xatolik"
 
 #: src/app/services/media_downloaders/all_downloader.py:54
 #: src/app/services/media_downloaders/all_downloader.py:64
 #: src/app/services/media_downloaders/all_downloader.py:74
 msgid "File size big to 2 gb"
-msgstr "⚠️ Fayl hajmi 2GB da katta"
+msgstr "⚠️ Fayl hajmi 2GB dan katta"
 
 #: src/app/services/media_downloaders/all_downloader.py:56
 #: src/app/services/media_downloaders/all_downloader.py:66
 #: src/app/services/media_downloaders/all_downloader.py:76
 msgid "Error in loading file"
-msgstr "⚠️ Yuklab olishda xatolik yuzberdi."
+msgstr "⚠️ Fayl yuklab olishda xatolik"
 
 #: src/app/services/media_downloaders/all_downloader.py:103
 #: src/app/services/media_downloaders/all_downloader.py:154
 #: src/app/services/media_downloaders/all_downloader.py:168
 msgid "Music not found"
-msgstr "⚠️ Afsuski musiqa topilmadi."
-
+msgstr "⚠️ Musiqa topilmadi"
