@@ -102,7 +102,6 @@ def audio_keyboard(lang: str, file_id: str = \"\", title: str = \"\", is_favorit
         # Show both hearts side by side as reactions:
         # ❤️ = remove from favorites (active/added state)
         # 🤍 = add to favorites (inactive state)
-        # The currently active one reflects is_favorite state
         remove_btn = InlineKeyboardButton(
             text=\"❤️\" if is_favorite else \"❤\",
             callback_data=FavoriteCD(action=\"remove\").pack()
@@ -117,35 +116,34 @@ def audio_keyboard(lang: str, file_id: str = \"\", title: str = \"\", is_favorit
 
 
 def auido_effect_kbd(actions: str, lang: str):
-    _ = get_translator(lang).gettext
     keyboard_builder = InlineKeyboardBuilder()
 
     keyboard_builder.row(
         InlineKeyboardButton(
-            text=_(\"Konsert\"),
-            callback_data=MediaEffectsCD(
-                actions=actions,
-                effect=GeneralEffectAction.EFFECT_CONCERT_HALL
-            ).pack()
-        ),
-        InlineKeyboardButton(
-            text=_(\"8D\"),
+            text=\"🎧 8D\",
             callback_data=MediaEffectsCD(
                 actions=actions,
                 effect=GeneralEffectAction.EFFECT_8D
+            ).pack()
+        ),
+        InlineKeyboardButton(
+            text=\"🥁 Concert Hall\",
+            callback_data=MediaEffectsCD(
+                actions=actions,
+                effect=GeneralEffectAction.EFFECT_CONCERT_HALL
             ).pack()
         )
     )
     keyboard_builder.row(
         InlineKeyboardButton(
-            text=_(\"Slowed\"),
+            text=\"🐌 Slowed\",
             callback_data=MediaEffectsCD(
                 actions=actions,
                 effect=GeneralEffectAction.EFFECT_SLOWED
             ).pack()
         ),
         InlineKeyboardButton(
-            text=_(\"Speed\"),
+            text=\"🎤 Minus\",
             callback_data=MediaEffectsCD(
                 actions=actions,
                 effect=GeneralEffectAction.EFFECT_SPEED
