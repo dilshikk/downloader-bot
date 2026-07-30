@@ -10,7 +10,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, FSInputFile, CallbackQuery, InputMediaAudio, InputMediaPhoto, InputMediaVideo
 
 from src.app.core.config import Settings
-from src.app.database.redis_utils import get_cached_media, cache_media, get_redis, get_cache_key
+from src.app.database.redis_utils import (
+    get_cached_media, cache_media, get_redis, get_cache_key,
+    get_cached_audio_file_id, cache_audio_file_id,
+)
 from src.app.keyboards.callback_data import MusicCD, SearchMusicInVideoCD, AudioCD, MediaEffectsCD, TopPopularMusicCD
 from src.app.keyboards.inline import video_keyboards, music_keyboards, audio_keyboard, auido_effect_kbd
 from src.app.services.media_downloaders.all_downloader import AllDownloader
@@ -618,8 +621,25 @@ async def send_music_results_from_video(call: CallbackQuery, lang: str):
 
 
 @media_downloader_router.callback_query(MusicCD.filter())
-async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD, lang: str):
+async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD, lang: str, settings: Settings):
+    """Download and send a track. Uses Redis file_id cache for instant delivery."""
     _ = get_translator(lang).gettext
+    video_id = callback_data.video_id
+
+    # Check Redis cache for previously sent file_id
+    cached_fid = await get_cached_audio_file_id(video_id, settings)
+    if cached_fid:
+        try:
+            sent = await call.message.reply_audio(
+                audio=cached_fid,
+                caption=_("Downloaded by"),
+                reply_markup=audio_keyboard(lang, file_id=cached_fid, title="", is_favorite=False)
+            )
+            return
+        except Exception:
+            # file_id expired or invalid, fall through to download
+            pass
+
     loader = AnimatedLoader(call.message, DOWNLOAD_FRAMES)
     await loader.start()
     download_music = AllDownloader()
@@ -627,7 +647,7 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
     try:
         music_path, title = await download_music.music_downloaders(
             actions=MusicAction.DOWNLOAD,
-            some_data=callback_data.video_id
+            some_data=video_id
         )
 
         if music_path and await asyncio.to_thread(os.path.exists, music_path):
@@ -644,6 +664,8 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
             )
             real_file_id = sent.audio.file_id if sent and sent.audio else ""
             if real_file_id:
+                # Cache file_id for future instant delivery
+                await cache_audio_file_id(video_id, real_file_id, settings)
                 await sent.edit_reply_markup(
                     reply_markup=audio_keyboard(
                         lang,
