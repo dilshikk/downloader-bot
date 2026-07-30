@@ -58,11 +58,17 @@ class YouTubeSearcher:
         query: str,
         max_count: int = 5
     ):
+        """Fast YouTube search using extract_flat for speed.
+
+        Returns (results_list, entries_list, errors_list).
+        Uses extract_flat to avoid fetching full video info — ~10x faster.
+        """
         def extract_search():
             ydl_opts = {
                 "quiet": True,
-                "match_filter": lambda info: info.get("duration", 0) < 600,
+                "extract_flat": "in_playlist",
                 "skip_download": True,
+                "socket_timeout": 10,
             }
 
             search_query = f"ytsearch{max_count}:{query}"
@@ -77,31 +83,31 @@ class YouTubeSearcher:
                         errors.append(DownloadError.MUSIC_NOT_FOUND)
                         return [], [], errors
 
-                    entries = data.get("entries", [])
+                    entries = data.get("entries", []) or []
 
                     for entry in entries:
-                        filesize = None
-                        if entry.get("formats"):
-                            best_audio = max(
-                                (f for f in entry["formats"] if f.get("filesize")),
-                                key=lambda f: f["filesize"],
-                                default=None,
-                            )
-                            if best_audio:
-                                filesize = best_audio["filesize"]
-
-                        duration = entry.get("duration", 0)
+                        if not entry:
+                            continue
+                        duration_secs = entry.get("duration") or 0
+                        # Skip if longer than 10 minutes
+                        if duration_secs > 600:
+                            continue
+                        duration_str = f"{duration_secs // 60}:{duration_secs % 60:02d}" if duration_secs else None
                         results.append({
                             "title": entry.get("title", ""),
-                            "id": entry.get("id", ""),
-                            "duration": f"{duration // 60}:{duration % 60:02d}" if duration else None,
-                            "filesize_mb": round(filesize / (1024 * 1024), 2) if filesize else None,
+                            "id": entry.get("id", entry.get("url", "")),
+                            "duration": duration_str,
+                            "filesize_mb": None,
+                            "thumbnail": entry.get("thumbnail") or entry.get("thumbnails", [{}])[0].get("url", "") if entry.get("thumbnails") else "",
                         })
+
+                    if not results:
+                        errors.append(DownloadError.MUSIC_NOT_FOUND)
 
                     return results, entries, errors
 
             except Exception as e:
-                print("ERROR", e)
+                print("ERROR search_music:", e)
                 return [], [], [str(e)]
 
         return await asyncio.to_thread(extract_search)
