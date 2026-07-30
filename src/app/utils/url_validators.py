@@ -3,7 +3,6 @@ from urllib.parse import urlparse, parse_qs, unquote
 
 from src.app.utils.enums.url import URLType, URLInfo
 
-
 # ==================== VALIDATOR CLASS ====================
 
 class SocialMediaURLValidator:
@@ -28,6 +27,9 @@ class SocialMediaURLValidator:
         "p16-sign-va.tiktokcdn.com"
     }
 
+    VK_DOMAINS = {
+        "vk.com", "vk.ru", "m.vk.com",
+    }
 
     @staticmethod
     def _clean_url(url: str) -> str:
@@ -255,7 +257,6 @@ class SocialMediaURLValidator:
 
         # Shorts: /shorts/VIDEO_ID
         if "/shorts/" in url_lower:
-            # Use original URL to preserve case
             video_id = re.search(r"/shorts/([\w-]+)", url, re.IGNORECASE)
             return URLInfo(
                 url_type=URLType.YOUTUBE_SHORTS,
@@ -270,22 +271,18 @@ class SocialMediaURLValidator:
 
         # youtu.be format
         if "youtu.be" in domain:
-            # Use original URL to preserve case-sensitive video ID
             match = re.search(r"youtu\.be/([\w-]+)", url, re.IGNORECASE)
             if match:
                 video_id = match.group(1)
 
         # youtube.com format
         else:
-            # From query parameter (use ORIGINAL url, not lowercased!)
-            parsed = urlparse(url)  # Don't use url_lower here!
+            parsed = urlparse(url)
             params = parse_qs(parsed.query)
-            if "v" in params and params["v"][0]:  # Check if not empty!
+            if "v" in params and params["v"][0]:
                 video_id = params["v"][0]
 
-            # From path
             if not video_id:
-                # Use original URL to preserve case
                 match = re.search(r"[?&]v=([\w-]+)", url, re.IGNORECASE)
                 if match:
                     video_id = match.group(1)
@@ -312,7 +309,6 @@ class SocialMediaURLValidator:
 
         # Playlist: list=PLAYLIST_ID
         if "list=" in url_lower:
-            # Use original URL for parameters
             parsed = urlparse(url)
             params = parse_qs(parsed.query)
             playlist_id = params.get("list", [None])[0]
@@ -376,7 +372,6 @@ class SocialMediaURLValidator:
                     clean_url=url
                 )
 
-            # Just /video/ID
             video_id = re.search(r"/video/(\d+)", url_lower)
             return URLInfo(
                 url_type=URLType.TIKTOK_VIDEO,
@@ -420,16 +415,6 @@ class SocialMediaURLValidator:
                 clean_url=url
             )
 
-        # Short link: vt.tiktok.com/CODE or vm.tiktok.com/CODE
-        if domain in ("vt.tiktok.com", "vm.tiktok.com"):
-            return URLInfo(
-                url_type=URLType.TIKTOK_VIDEO,
-                platform="tiktok",
-                is_cdn=False,
-                clean_url=url,
-                metadata={"short_link": True}
-            )
-
         return URLInfo(
             url_type=URLType.UNKNOWN,
             platform="tiktok",
@@ -437,67 +422,88 @@ class SocialMediaURLValidator:
             clean_url=url
         )
 
-    # ==================== MAIN VALIDATION ====================
+    # ==================== VK ====================
 
-    def validate(self, url: str) -> URLInfo:
+    def _validate_vk(self, url: str, domain: str) -> URLInfo:
+        """Validate VK URL.
+
+        Supported formats:
+          https://vk.com/video-OWNERID_VIDEOID
+          https://vk.com/video?z=video-OWNERID_VIDEOID
+          https://vk.com/clips-OWNERID?z=clip-OWNERID_CLIPID
+          https://vk.com/OWNER?z=video-OWNERID_VIDEOID
         """
-        Validate social media URL and return detailed info
+        url_lower = url.lower()
 
-        Args:
-            url: URL to validate
-
-        Returns:
-            URLInfo with platform, type, and metadata
-        """
-        if not url or not isinstance(url, str):
+        # Clips
+        if "/clips" in url_lower or "clip-" in url_lower:
+            clip_match = re.search(r"clip-?(\d+_\d+)", url_lower)
             return URLInfo(
-                url_type=URLType.UNKNOWN,
-                platform="unknown",
-                is_cdn=False
+                url_type=URLType.VK_CLIP,
+                platform="vk",
+                is_cdn=False,
+                video_id=clip_match.group(1) if clip_match else None,
+                clean_url=url
             )
 
-        # Clean URL
-        clean_url = self._clean_url(url)
-        domain = self._extract_domain(clean_url)
-
-        if not domain:
+        # video-OWNERID_VIDEOID in path or query
+        video_match = re.search(r"video-?(\d+_\d+)", url_lower)
+        if video_match:
             return URLInfo(
-                url_type=URLType.UNKNOWN,
-                platform="unknown",
-                is_cdn=False
+                url_type=URLType.VK_VIDEO,
+                platform="vk",
+                is_cdn=False,
+                video_id=video_match.group(1),
+                clean_url=url
             )
 
-        # Route to platform validator
-        if any(d in domain for d in self.INSTAGRAM_DOMAINS):
-            return self._validate_instagram(clean_url, domain)
+        # /video?z=videoOWNER_ID
+        parsed = urlparse(url)
+        if parsed.path.rstrip("/").endswith("/video"):
+            params = parse_qs(parsed.query)
+            z = params.get("z", [None])[0]
+            if z:
+                vid = re.search(r"video-?(\d+_\d+)", z)
+                if vid:
+                    return URLInfo(
+                        url_type=URLType.VK_VIDEO,
+                        platform="vk",
+                        is_cdn=False,
+                        video_id=vid.group(1),
+                        clean_url=url
+                    )
 
-        elif any(d in domain for d in self.YOUTUBE_DOMAINS):
-            return self._validate_youtube(clean_url, domain)
-
-        elif any(d in domain for d in self.TIKTOK_DOMAINS):
-            return self._validate_tiktok(clean_url, domain)
-
-        # Unknown platform
         return URLInfo(
-            url_type=URLType.UNKNOWN,
-            platform="unknown",
+            url_type=URLType.VK_VIDEO,
+            platform="vk",
             is_cdn=False,
-            clean_url=clean_url
+            clean_url=url
         )
 
-    def validate_simple(self, url: str) -> str:
-        """
-        Simple validation - returns just the URL type string
-        Compatible with old validator_urls function
+    # ==================== MAIN VALIDATOR ====================
 
-        Args:
-            url: URL to validate
+    def validate(self, url: str) -> URLInfo:
+        """Validate URL and return URLInfo"""
+        url = self._clean_url(url)
+        if not url:
+            return URLInfo(url_type=URLType.UNKNOWN, platform="unknown", is_cdn=False, clean_url=url)
 
-        Returns:
-            String like "youtube_video", "instagram_post", etc.
-        """
-        result = self.validate(url)
-        return result.url_type.value
+        domain = self._extract_domain(url)
 
+        # Instagram
+        if any(ig in domain for ig in ("instagram.com", "instagr.am", "cdninstagram", "fbcdn")):
+            return self._validate_instagram(url, domain)
 
+        # YouTube
+        if any(yt in domain for yt in ("youtube.com", "youtu.be", "ytimg", "googlevideo", "yt.be")):
+            return self._validate_youtube(url, domain)
 
+        # TikTok
+        if any(tt in domain for tt in ("tiktok.com", "tiktokcdn", "tiktokv", "tiktokapi")):
+            return self._validate_tiktok(url, domain)
+
+        # VK
+        if any(vk in domain for vk in ("vk.com", "vk.ru")):
+            return self._validate_vk(url, domain)
+
+        return URLInfo(url_type=URLType.UNKNOWN, platform="unknown", is_cdn=False, clean_url=url)
