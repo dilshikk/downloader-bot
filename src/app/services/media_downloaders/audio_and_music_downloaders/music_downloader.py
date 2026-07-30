@@ -47,21 +47,18 @@ class MusicDownloader:
         music_output_path = f"./media/audios/{get_audio_file_name()}"
 
         yt_dlp_opts: dict = {
-            # Use Android YouTube client — bypasses bot-detection throttling,
-            # returns direct CDN URLs without extra JS challenge resolution
+            # android client bypasses bot-detection; don't restrict by ext —
+            # android returns webm/opus, not m4a, so just take bestaudio
             "extractor_args": {
                 "youtube": {
                     "player_client": ["android"],
-                    "skip": ["hls", "dash"],
                 }
             },
-            # Prefer m4a (single file, no merge/mux step needed)
-            "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+            "format": "bestaudio/best",
             "outtmpl": music_output_path + ".%(ext)s",
             "quiet": True,
             "no_warnings": True,
             "socket_timeout": 15,
-            # Skip writing thumbnails, descriptions, subtitles
             "writethumbnail": False,
             "writesubtitles": False,
             "writeautomaticsub": False,
@@ -69,10 +66,8 @@ class MusicDownloader:
         }
 
         if _ARIA2C_AVAILABLE:
-            # aria2c: 16 parallel connections — fastest on VPS
             yt_dlp_opts.update(_ARIA2C_OPTS)
         else:
-            # Fallback: yt-dlp built-in parallel fragment downloads
             yt_dlp_opts["concurrent_fragment_downloads"] = 5
 
         def download_sync():
@@ -86,13 +81,12 @@ class MusicDownloader:
                 return None
 
             title = info["entries"][0]["title"] if "entries" in info else info.get("title", "")
-            ext = info["entries"][0].get("ext", "m4a") if "entries" in info else info.get("ext", "m4a")
+            ext = info["entries"][0].get("ext", "webm") if "entries" in info else info.get("ext", "webm")
 
             final_path = f"{music_output_path}.{ext}"
 
-            # Fallback: scan for any matching file if ext guess is wrong
             if not os.path.exists(final_path):
-                for candidate_ext in ("m4a", "webm", "opus", "ogg", "mp3"):
+                for candidate_ext in ("webm", "m4a", "opus", "ogg", "mp3"):
                     candidate = f"{music_output_path}.{candidate_ext}"
                     if os.path.exists(candidate):
                         final_path = candidate
