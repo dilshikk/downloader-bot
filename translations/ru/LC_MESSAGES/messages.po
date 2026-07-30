@@ -48,105 +48,109 @@ msgstr ""
 #: src/app/handlers/admin/menu/menu.py:107
 msgid "Admin main menu title"
 msgstr ""
-"📋 <b>Меню администратора:</b>\n"
+"📋 <b>Меню администратора</b>\n"
 "\n"
-"Выберите нужный раздел ниже."
+"Выберите нужный раздел:"
 
 #: src/app/handlers/admin/menu/bot.py:40
 msgid "Delete bot choose"
-msgstr "Вы уверены, что хотите удалить бота"
+msgstr "🗑 Вы уверены, что хотите удалить этого бота?"
 
 #: src/app/handlers/admin/menu/bot.py:47
 #: src/app/handlers/admin/menu/channel.py:74
 msgid "Passed Delete"
-msgstr "✔️ Бот успешно удален"
+msgstr "✔️ Успешно удалено"
 
 #: src/app/handlers/admin/menu/bot.py:75
 msgid "Bot set up menu title"
-msgstr "Выберите один из следующих вариантов"
+msgstr "⚙️ Настройки бота\n\nВыберите действие:"
 
 #: src/app/handlers/admin/menu/bot.py:96
 msgid "Send bot username"
-msgstr "Отправьте имя пользователя бота"
+msgstr "Отправьте username бота (например: @mybot)"
 
 #: src/app/handlers/admin/menu/bot.py:108
 msgid "Send bot username in format: @username"
-msgstr "Отправьте имя пользователя бота в формате @username"
+msgstr "⚠️ Неверный формат. Отправьте username в формате @username"
 
 #: src/app/handlers/admin/menu/bot.py:115
 msgid "Send name"
-msgstr "Дайте имя боту"
+msgstr "Введите название бота (отображаемое имя)"
 
 #: src/app/handlers/admin/menu/bot.py:125
 msgid "Forward only text"
-msgstr "Отправляйте только текст"
+msgstr "⚠️ Отправляйте только текст"
 
 #: src/app/handlers/admin/menu/bot.py:132
 #: src/app/handlers/admin/menu/channel.py:127
 msgid "Send url"
-msgstr "✔️ Отправьте URL"
+msgstr "Отправьте ссылку на бота или канал"
 
 #: src/app/handlers/admin/menu/bot.py:151
 #: src/app/handlers/admin/menu/bot.py:192
 msgid "Bot already exists"
-msgstr "✔️ Бот уже добавлен"
+msgstr "⚠️ Такой бот уже добавлен"
 
 #: src/app/handlers/admin/menu/bot.py:165
 msgid "Bot successfully added!"
-msgstr "✔️ Бот успешно добавлен"
+msgstr "✔️ Бот успешно добавлен!"
 
 #: src/app/handlers/admin/menu/broadcasting.py:23
 msgid "Broadcasting start message"
-msgstr "Рассылка объявлений начата"
+msgstr ""
+"📢 <b>Рассылка сообщений</b>\n"
+"\n"
+"Отправьте сообщение, которое хотите разослать всем пользователям.\n"
+"Поддерживаются: текст, фото, видео, аудио, документы."
 
 #: src/app/handlers/admin/menu/broadcasting.py:37
 msgid "Poll not allowed"
-msgstr "Опросы не разрешены"
+msgstr "⚠️ Опросы не поддерживаются для рассылки"
 
 #: src/app/handlers/admin/menu/broadcasting.py:49
 msgid "Message received confirm broadcasting"
-msgstr "Полученное сообщение подтверждает рассылку"
+msgstr "✅ Сообщение получено. Подтвердите запуск рассылки:"
 
 #: src/app/handlers/admin/menu/broadcasting.py:54
 msgid "Cancel"
-msgstr "Отмена"
+msgstr "❌ Отмена"
 
 #: src/app/handlers/admin/menu/broadcasting.py:58
 msgid "Confirm"
-msgstr "Начать"
+msgstr "✅ Начать рассылку"
 
 #: src/app/handlers/admin/menu/broadcasting.py:77
 msgid "Broadcasting cancelled"
-msgstr "Отменено"
+msgstr "❌ Рассылка отменена"
 
 #: src/app/handlers/admin/menu/broadcasting.py:96
 msgid "Message not found"
-msgstr "Сообщение не найдено"
+msgstr "⚠️ Сообщение для рассылки не найдено"
 
 #: src/app/handlers/admin/menu/broadcasting.py:98
 #: src/app/services/broadcaster.py:96
 msgid "Broadcasting started"
-msgstr "Рассылка объявлений начата"
+msgstr "⏳ Рассылка запущена..."
 
 #: src/app/handlers/admin/menu/broadcasting.py:115
 msgid "Broadcasting completed"
-msgstr "Рассылка объявлений завершена"
+msgstr "✔️ Рассылка завершена"
 
 #: src/app/handlers/admin/menu/broadcasting.py:118
 msgid "Blocked users count"
-msgstr "Пользователи, которые заблокировали"
+msgstr "🚫 Заблокировали бота"
 
 #: src/app/handlers/admin/menu/broadcasting.py:120
 msgid "Deleted users count"
-msgstr "Удаленные пользователи"
+msgstr "🗑 Удалённые аккаунты"
 
 #: src/app/handlers/admin/menu/broadcasting.py:122
 msgid "Limited users count"
-msgstr "Количество ограниченных пользователей"
+msgstr "⚠️ Ограниченные аккаунты"
 
 #: src/app/handlers/admin/menu/broadcasting.py:124
 msgid "Deactivated users count"
-msgstr "Количество удаленных пользователей"
+msgstr "💤 Деактивированные аккаунты"
 
 #: src/app/handlers/admin/menu/broadcasting.py:127
 msgid "All messages delivered successfully"
@@ -160,110 +164,118 @@ msgstr "Ошибка: {}"
 #: src/app/handlers/admin/menu/broadcasting.py:139
 #: src/app/services/broadcaster.py:120
 msgid "Broadcasting error"
-msgstr "⚠️ Ошибка при рассылке объявлений"
+msgstr "⚠️ Ошибка при рассылке"
 
 #: src/app/handlers/admin/menu/broadcasting.py:140
 #, python-brace-format
 msgid "Unexpected error: {error}"
-msgstr "Ошибка: {}"
+msgstr "⚠️ Непредвиденная ошибка: {}"
 
 #: src/app/handlers/admin/menu/channel.py:64
 msgid "Delete channel choose"
-msgstr "🗑 Вы уверены, что хотите удалить канал"
+msgstr "🗑 Вы уверены, что хотите удалить этот канал?"
 
 #: src/app/handlers/admin/menu/channel.py:87
 msgid "Channel set up menu title"
 msgstr ""
-"📢 Полная информация о канале\n"
+"📢 <b>Информация о канале</b>\n"
 "\n"
 "🆔 ID: <code>{}</code>\n"
-"📛 Имя: <b>{}</b>\n"
-"🔗 Имя пользователя: <b>@{}</b>\n"
-"📶 Статус: <code>{}</code>\n"
+"📛 Название: <b>{}</b>\n"
+"🔗 Username: <b>@{}</b>\n"
+"📶 Статус подписки: <code>{}</code>\n"
 "🚀 Ссылка: https://t.me/{}\n"
 "\n"
+"Выберите действие:"
 
 #: src/app/handlers/admin/menu/channel.py:108
 msgid "Send post for channel or group"
-msgstr "🚀 Отправьте пост из канала или группы"
+msgstr "📨 Перешлите любое сообщение из нужного канала или группы"
 
 #: src/app/handlers/admin/menu/channel.py:120
 msgid "Forward only from chat"
-msgstr "⚠️ Отправляйте пост только из канала или группы"
+msgstr "⚠️ Пожалуйста, перешлите сообщение именно из канала или группы"
 
 #: src/app/handlers/admin/menu/channel.py:147
 #: src/app/handlers/admin/menu/channel.py:191
 msgid "Channel already exists"
-msgstr "✔️ Канал уже добавлен"
+msgstr "⚠️ Такой канал уже добавлен"
 
 #: src/app/handlers/admin/menu/channel.py:164
 msgid "Channel successfully added!"
-msgstr "✔️ Канал успешно добавлен"
+msgstr "✔️ Канал успешно добавлен!"
 
 #: src/app/handlers/admin/menu/helpers.py:11
 #: src/app/handlers/admin/menu/menu.py:53
 msgid "Mandatory subscriptions menu title"
-msgstr "📬 Выберите один из следующих вариантов"
+msgstr ""
+"📋 <b>Обязательные подписки</b>\n"
+"\n"
+"Здесь вы можете управлять каналами и ботами,\n"
+"на которые пользователи обязаны подписаться."
 
 #: src/app/handlers/admin/menu/helpers.py:24
 #: src/app/handlers/admin/menu/menu.py:71
 #: src/app/handlers/admin/menu/referal.py:50
 msgid "Referals menu title"
-msgstr "📬 Выберите один из следующих вариантов"
+msgstr ""
+"🔗 <b>Рефералы</b>\n"
+"\n"
+"Выберите реферала для управления или добавьте новый."
 
 #: src/app/handlers/admin/menu/helpers.py:24
 #: src/app/handlers/admin/menu/menu.py:73
 #: src/app/handlers/admin/menu/referal.py:52
 msgid "Empty referals menu title"
-msgstr "📥 Вы еще ничего не добавили"
+msgstr "📭 Рефералов пока нет. Нажмите ➕ чтобы добавить первый."
 
 #: src/app/handlers/admin/menu/menu.py:42
 msgid "Coming soon..."
-msgstr "⏰ Подождите немного"
+msgstr "⏰ Этот раздел пока в разработке"
 
 #: src/app/handlers/admin/menu/menu.py:55
 msgid "Empty mandatory subscriptions menu title"
-msgstr "📥 Вы еще ничего не добавили"
+msgstr "📭 Подписок пока нет. Нажмите ➕ чтобы добавить канал или бота."
 
 #: src/app/handlers/admin/menu/menu.py:87
 msgid "users statistics format text"
 msgstr ""
-"👥 Статистика добавления пользователей\n"
+"👥 <b>Статистика пользователей</b>\n"
 "\n"
-"Добавлено сегодня: {}\n"
-"Добавлено за неделю: {}\n"
-"Добавлено за месяц: {}\n"
-"Добавлено за год: {}\n"
-"Всего добавлено: {}"
+"📅 Сегодня: <b>{}</b>\n"
+"📆 За неделю: <b>{}</b>\n"
+"🗓 За месяц: <b>{}</b>\n"
+"📊 За год: <b>{}</b>\n"
+"👤 Всего: <b>{}</b>"
 
 #: src/app/handlers/admin/menu/referal.py:38
 msgid "Delete referal choose"
-msgstr "🗑 Вы уверены, что хотите удалить реферала"
+msgstr "🗑 Вы уверены, что хотите удалить этого реферала?"
 
 #: src/app/handlers/admin/menu/referal.py:45
 msgid "Delete referal passed"
-msgstr "🗑 Реферал успешно удален"
+msgstr "✔️ Реферал успешно удалён"
 
 #: src/app/handlers/admin/menu/referal.py:63
 msgid "Get referal name"
-msgstr "📬 Дайте имя рефералу"
+msgstr "Введите название реферала (для внутреннего использования)"
 
 #: src/app/handlers/admin/menu/referal.py:74
 msgid "Referal formant info"
 msgstr ""
-"Информация о реферале\n"
+"🔗 <b>Информация о реферале</b>\n"
 "\n"
-"Имя: {}\n"
-"Приглашенные пользователи: {}\n"
-"URL реферала: https://t.me/ttnowatermark_bot?start={}"
+"📛 Название: <b>{}</b>\n"
+"👥 Приглашено пользователей: <b>{}</b>\n"
+"🚀 Реферальная ссылка: https://t.me/ttnowatermark_bot?start={}"
 
 #: src/app/handlers/admin/menu/referal.py:85
 msgid "Send only text"
-msgstr "Отправляйте только текст"
+msgstr "⚠️ Отправляйте только текст"
 
 #: src/app/handlers/admin/menu/referal.py:93
 msgid "Referral added successfully!"
-msgstr "✔️ Реферал успешно добавлен"
+msgstr "✔️ Реферал успешно добавлен!"
 
 #: src/app/handlers/user/commands.py:15
 msgid "About"
@@ -469,31 +481,31 @@ msgstr "⚡️ Ускоренный"
 
 #: src/app/keyboards/inline.py:151
 msgid "Mandatory subscription"
-msgstr "Обязательные подписки"
+msgstr "📋 Обязательные подписки"
 
 #: src/app/keyboards/inline.py:159
 msgid "Referals"
-msgstr "Рефералы"
+msgstr "🔗 Рефералы"
 
 #: src/app/keyboards/inline.py:167
 msgid "Statistics"
-msgstr "Статистика"
+msgstr "📊 Статистика"
 
 #: src/app/keyboards/inline.py:175
 msgid "Broadcast"
-msgstr "Рассылка объявлений"
+msgstr "📢 Рассылка"
 
 #: src/app/keyboards/inline.py:181
 msgid "Quit from admin menu"
-msgstr "↩️ Назад"
+msgstr "↩️ Выйти из админ-панели"
 
 #: src/app/keyboards/inline.py:196
 msgid "Channels start border"
-msgstr "🗂 Каналы"
+msgstr "── 📢 Каналы ──"
 
 #: src/app/keyboards/inline.py:217
 msgid "Bots start border"
-msgstr "🗂 Боты"
+msgstr "── 🤖 Боты ──"
 
 #: src/app/keyboards/inline.py:238
 msgid "Add channel"
@@ -506,7 +518,7 @@ msgstr "➕ Добавить бота"
 #: src/app/keyboards/inline.py:253 src/app/keyboards/inline.py:290
 #: src/app/keyboards/inline.py:503
 msgid "Back to admin menu"
-msgstr "↩️ Назад"
+msgstr "↩️ Назад в меню"
 
 #: src/app/keyboards/inline.py:279
 msgid "Add referal"
@@ -514,15 +526,15 @@ msgstr "➕ Добавить реферала"
 
 #: src/app/keyboards/inline.py:305 src/app/keyboards/inline.py:340
 msgid "Delete in mandatory sub"
-msgstr "🗑 Удалить из обязательной подписки"
+msgstr "🔕 Убрать из обязательных"
 
 #: src/app/keyboards/inline.py:312
 msgid "Add in mandatry sub"
-msgstr "📬 Добавить в обязательную подписку"
+msgstr "🔔 Добавить в обязательные"
 
 #: src/app/keyboards/inline.py:319
 msgid "Delete channel"
-msgstr "Удалить канал"
+msgstr "🗑 Удалить канал"
 
 #: src/app/keyboards/inline.py:325 src/app/keyboards/inline.py:360
 #: src/app/keyboards/inline.py:454
@@ -531,21 +543,21 @@ msgstr "↩️ Назад"
 
 #: src/app/keyboards/inline.py:348
 msgid "Add in mandatory sub"
-msgstr "📬 Добавить в обязательную подписку"
+msgstr "🔔 Добавить в обязательные"
 
 #: src/app/keyboards/inline.py:356
 msgid "Delete bot"
-msgstr "Удалить бота"
+msgstr "🗑 Удалить бота"
 
 #: src/app/keyboards/inline.py:374 src/app/keyboards/inline.py:396
 #: src/app/keyboards/inline.py:413 src/app/keyboards/inline.py:432
 msgid "Delete"
-msgstr "Да"
+msgstr "✅ Да, удалить"
 
 #: src/app/keyboards/inline.py:380 src/app/keyboards/inline.py:400
 #: src/app/keyboards/inline.py:439
 msgid "Not delete"
-msgstr "Нет"
+msgstr "❌ Нет, отмена"
 
 #: src/app/keyboards/inline.py:419
 msgid "back"
@@ -553,15 +565,15 @@ msgstr "↩️ Назад"
 
 #: src/app/keyboards/inline.py:463
 msgid "Back to subscriptions menu"
-msgstr "↩️ Назад"
+msgstr "↩️ К подпискам"
 
 #: src/app/keyboards/inline.py:475
 msgid "Defult Channel Url"
-msgstr "URL по умолчанию"
+msgstr "🔗 Использовать стандартный URL"
 
 #: src/app/keyboards/inline.py:489
 msgid "Defult Bot Url"
-msgstr "URL по умолчанию"
+msgstr "🔗 Использовать стандартный URL"
 
 #: src/app/services/broadcaster.py:82
 msgid "Broadcasting message or album required"
@@ -574,7 +586,7 @@ msgstr "Выберите только одно: сообщение или аль
 #: src/app/services/broadcaster.py:112
 #, python-brace-format
 msgid "Broadcasting completed: {sent} sent, {failed} failed, {batches} batches"
-msgstr "Трансляция завершена: {} отправлено, {} ошибок, {} пакетов"
+msgstr "Рассылка завершена: {} отправлено, {} ошибок, {} пакетов"
 
 #: src/app/services/broadcaster.py:123
 #, python-brace-format
@@ -587,24 +599,24 @@ msgstr "Сообщение отправлено"
 
 #: src/app/services/broadcaster.py:184
 msgid "deactivated"
-msgstr "Отключено"
+msgstr "Деактивирован"
 
 #: src/app/services/broadcaster.py:187
 msgid "limited"
-msgstr "Ограничено"
+msgstr "Ограничен"
 
 #: src/app/services/broadcaster.py:190
 msgid "deleted"
-msgstr "Удалено"
+msgstr "Удалён"
 
 #: src/app/services/broadcaster.py:193
 msgid "blocked"
-msgstr "Заблокировано"
+msgstr "Заблокировал"
 
 #: src/app/services/broadcaster.py:198
 #, python-brace-format
 msgid "[ID:{user_id}] Flood limit. Sleeping {seconds}s"
-msgstr "[ID:{}] Лимит наводнения. Сон {} сек"
+msgstr "[ID:{}] Flood limit. Ожидание {} сек"
 
 #: src/app/services/broadcaster.py:207
 msgid "Telegram error"
@@ -630,7 +642,7 @@ msgstr "Всего обработано: {} пользователей"
 
 #: src/app/services/broadcaster.py:324
 msgid "Preview delete error"
-msgstr "⚠️ Ошибка при удалении предпросмотра"
+msgstr "⚠️ Ошибка при удалении превью"
 
 #: src/app/services/media_downloaders/all_downloader.py:54
 #: src/app/services/media_downloaders/all_downloader.py:64
@@ -642,11 +654,10 @@ msgstr "⚠️ Размер файла больше 2GB"
 #: src/app/services/media_downloaders/all_downloader.py:66
 #: src/app/services/media_downloaders/all_downloader.py:76
 msgid "Error in loading file"
-msgstr "⚠️ Ошибка при загрузке файла."
+msgstr "⚠️ Ошибка при загрузке файла"
 
 #: src/app/services/media_downloaders/all_downloader.py:103
 #: src/app/services/media_downloaders/all_downloader.py:154
 #: src/app/services/media_downloaders/all_downloader.py:168
 msgid "Music not found"
-msgstr "⚠️ К сожалению, музыка не найдена."
-
+msgstr "⚠️ Музыка не найдена"
