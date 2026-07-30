@@ -95,14 +95,12 @@ async def take_media_effect(call: CallbackQuery, callback_data: MediaEffectsCD, 
                 effect_name = effect_str or (general_effect_type.value if general_effect_type else "")
                 title_text = f"{audio_title} {effect_name} remix" if audio_title else f"voice {effect_name} remix"
 
-                # Send new audio message with placeholder keyboard first
                 sent = await call.message.answer_audio(
                     audio=FSInputFile(out_put_media_path),
                     caption=_("Downloaded by"),
                     title=title_text,
                     reply_markup=audio_keyboard(lang, file_id="placeholder", title=title_text, is_favorite=False)
                 )
-                # Update keyboard with real file_id
                 real_file_id = sent.audio.file_id if sent and sent.audio else ""
                 if real_file_id:
                     await sent.edit_reply_markup(
@@ -510,6 +508,20 @@ async def all_downloader_(message: Message, lang: str, settings: Settings):
                     else:
                         await message.answer(_("Wrong url"))
 
+                elif info.platform == "vk":
+                    # VK video download
+                    loader = AnimatedLoader(message, DOWNLOAD_FRAMES)
+                    await loader.start()
+                    video_path = await downloader.vk_downloaders(message.text)
+
+                    if video_path and await asyncio.to_thread(os.path.exists, str(video_path)):
+                        sent = await message.reply_video(
+                            FSInputFile(str(video_path)),
+                            reply_markup=video_keyboards(lang),
+                            caption=_("Downloaded by")
+                        )
+                        await cache_media(message.text, [{'type': 'video', 'file_id': sent.video.file_id}], settings)
+
                 else:
                     await message.answer(_("Wrong url"))
 
@@ -630,14 +642,13 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
     cached_fid = await get_cached_audio_file_id(video_id, settings)
     if cached_fid:
         try:
-            sent = await call.message.reply_audio(
+            await call.message.reply_audio(
                 audio=cached_fid,
                 caption=_("Downloaded by"),
                 reply_markup=audio_keyboard(lang, file_id=cached_fid, title="", is_favorite=False)
             )
             return
         except Exception:
-            # file_id expired or invalid, fall through to download
             pass
 
     loader = AnimatedLoader(call.message, DOWNLOAD_FRAMES)
@@ -664,7 +675,6 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
             )
             real_file_id = sent.audio.file_id if sent and sent.audio else ""
             if real_file_id:
-                # Cache file_id for future instant delivery
                 await cache_audio_file_id(video_id, real_file_id, settings)
                 await sent.edit_reply_markup(
                     reply_markup=audio_keyboard(
