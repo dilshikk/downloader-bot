@@ -554,10 +554,11 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
     Priority:
       1. Redis file_id cache  → instant re-send (Telegram serves from CDN)
       2. In-process prefetch  → near-instant (file already downloaded in background)
-      3. Fresh download       → normal yt-dlp path
+      3. Fresh download       → yt-dlp; if DRM → fallback to title-based ytsearch
     """
     _ = get_translator(lang).gettext
     video_id = callback_data.video_id
+    track_title = callback_data.title or video_id  # used for DRM fallback
 
     # ── Layer 1: Redis file_id cache ──────────────────────────────────
     cached_fid = await get_cached_audio_file_id(video_id, settings)
@@ -583,8 +584,12 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
         if prefetched:
             music_path, title = prefetched
         else:
-            # ── Layer 3: fresh download ───────────────────────────────
+            # ── Layer 3: fresh download (with DRM fallback) ───────────
             result = await _music_downloader.download_music_from_youtube(video_id)
+            if not result:
+                # DRM or error — try yt-dlp search by title
+                print(f"DRM fallback for video_id={video_id!r}, title={track_title!r}")
+                result = await _music_downloader.download_music_by_query(track_title)
             if result:
                 music_path, title = result
 
@@ -601,6 +606,8 @@ async def send_music_search_results(call: CallbackQuery, callback_data: MusicCD,
                 await sent.edit_reply_markup(
                     reply_markup=audio_keyboard(lang, file_id=real_file_id, title=title or "", is_favorite=False)
                 )
+        else:
+            await call.message.answer(text=_("Error in loading music"))
 
     except Exception as e:
         print("ERROR in send_music_search_results:", e)
