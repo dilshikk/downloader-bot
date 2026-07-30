@@ -1,10 +1,12 @@
+import asyncpg
 from aiogram import Router, F
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from src.app.keyboards.callback_data import TopFilterCD
 from src.app.keyboards.inline import auido_effect_kbd, songs_keyboard, top_chart_keyboard
+from src.app.database.queries.favorites import FavoritesDataBaseActions
 from src.app.services.media_downloaders.seekers.search import YouTubeSearcher
 from src.app.utils.i18n import get_translator
 
@@ -26,6 +28,8 @@ _PERIOD_LABEL = {
     "month": "Oy",
 }
 
+_FAV_PAGE_SIZE = 10
+
 
 def _top_header(region: str, period: str) -> str:
     emoji = _REGION_EMOJI.get(region, "🌍")
@@ -35,6 +39,41 @@ def _top_header(region: str, period: str) -> str:
         f"{emoji} <b>{region.capitalize()}</b>  •  📅 <b>{period_label}</b>\n\n"
         f"Trekni bosib yuklab oling 👇"
     )
+
+
+def _favorites_keyboard(favorites: list, page: int = 1) -> InlineKeyboardMarkup:
+    """Build paginated inline keyboard for favorite tracks."""
+    total = len(favorites)
+    total_pages = max(1, (total + _FAV_PAGE_SIZE - 1) // _FAV_PAGE_SIZE)
+    start = (page - 1) * _FAV_PAGE_SIZE
+    end = start + _FAV_PAGE_SIZE
+    sliced = favorites[start:end]
+
+    inline_keyboard = []
+
+    for i, fav in enumerate(sliced, start=start + 1):
+        title = fav.get("title") or fav["title"] if isinstance(fav, dict) else (fav[1] if len(fav) > 1 else "Track")
+        file_id = fav.get("file_id") or fav["file_id"] if isinstance(fav, dict) else fav[0]
+        label = f"{'❤️'} {i}. {title}"
+        if len(label) > 60:
+            label = label[:57] + "..."
+        inline_keyboard.append([
+            InlineKeyboardButton(text=label, callback_data=f"fav_play:{file_id[:58]}")
+        ])
+
+    # Navigation
+    nav = []
+    if page > 1:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"fav_page:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
+    if page < total_pages:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"fav_page:{page + 1}"))
+    if nav:
+        inline_keyboard.append(nav)
+
+    inline_keyboard.append([InlineKeyboardButton(text="❌", callback_data="close")])
+
+    return InlineKeyboardMarkup(inline_keyboard=inline_keyboard)
 
 
 @user_commands_router.message(Command("about"))
@@ -68,6 +107,79 @@ async def handled_command_top(message: Message, lang: str):
         parse_mode="HTML",
         reply_markup=top_chart_keyboard(songs, region=region, period=period, page=1)
     )
+
+
+@user_commands_router.message(Command("my"))
+async def handled_command_my(message: Message, lang: str, pool: asyncpg.Pool):
+    """Show user's favorite tracks list."""
+    _ = get_translator(lang).gettext
+    db = FavoritesDataBaseActions(pool)
+    tg_id = message.from_user.id
+
+    favorites = await db.get_favorites(tg_id)
+
+    if not favorites:
+        await message.answer(
+            "❤️ <b>Sevimli treklar</b>\n\n"
+            "Sizda hali sevimli treklar yo'q.\n"
+            "Trekni yuklab, 🤍 tugmasini bosing.",
+            parse_mode="HTML"
+        )
+        return
+
+    # Convert asyncpg Records to dicts
+    fav_list = [{"file_id": r["file_id"], "title": r["title"]} for r in favorites]
+
+    await message.answer(
+        f"❤️ <b>Sevimli treklar</b> ({len(fav_list)})\n\n"
+        f"Trekni bosib tinglang 👇",
+        parse_mode="HTML",
+        reply_markup=_favorites_keyboard(fav_list, page=1)
+    )
+
+
+@user_commands_router.callback_query(F.data.startswith("fav_page:"))
+async def fav_page_handler(callback: CallbackQuery, lang: str, pool: asyncpg.Pool):
+    """Paginate favorites list."""
+    _ = get_translator(lang).gettext
+    db = FavoritesDataBaseActions(pool)
+    tg_id = callback.from_user.id
+
+    _, page_s = callback.data.split(":")
+    page = int(page_s)
+
+    favorites = await db.get_favorites(tg_id)
+    fav_list = [{"file_id": r["file_id"], "title": r["title"]} for r in favorites]
+
+    try:
+        await callback.message.edit_text(
+            f"❤️ <b>Sevimli treklar</b> ({len(fav_list)})\n\n"
+            f"Trekni bosib tinglang 👇",
+            parse_mode="HTML",
+            reply_markup=_favorites_keyboard(fav_list, page=page)
+        )
+    except TelegramBadRequest:
+        pass
+
+    await callback.answer()
+
+
+@user_commands_router.callback_query(F.data.startswith("fav_play:"))
+async def fav_play_handler(callback: CallbackQuery, lang: str):
+    """Send favorite track by file_id instantly."""
+    _ = get_translator(lang).gettext
+    file_id = callback.data.replace("fav_play:", "", 1)
+
+    try:
+        from src.app.keyboards.inline import audio_keyboard
+        await callback.message.reply_audio(
+            audio=file_id,
+            caption=_("Downloaded by"),
+            reply_markup=audio_keyboard(lang, file_id=file_id, title="", is_favorite=True)
+        )
+    except Exception as e:
+        print("ERROR in fav_play_handler:", e)
+        await callback.answer("Trekni yuborishda xatolik. Qayta qo'shing.", show_alert=True)
 
 
 @user_commands_router.callback_query(TopFilterCD.filter())
