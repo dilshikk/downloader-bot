@@ -1,10 +1,8 @@
 import asyncio
 import time
-from functools import partial
 from typing import Dict, List, Any, Optional
 
 from shazamio import Shazam
-from ytmusicapi import YTMusic
 from yt_dlp import YoutubeDL
 
 from src.app.utils.enums.error import DownloadError
@@ -14,9 +12,6 @@ CACHE_TTL = 60 * 60
 
 _NEG_CACHE: Dict[str, float] = {}
 NEG_CACHE_TTL = 60
-
-# Shared YTMusic instance — no auth needed for search
-_ytmusic = YTMusic()
 
 
 class YouTubeSearcher:
@@ -81,56 +76,23 @@ class YouTubeSearcher:
         max_count: int = 10,
     ) -> tuple[List[Dict[str, Any]], Any, List[str]]:
         """
-        Primary: YTMusic (fast, no rate-limit issues).
-        Fallback: yt-dlp ytsearch.
+        Search via yt-dlp ytsearch (extract_flat — no download).
         Returns (results, raw_entries, errors).
         NOTE: filesize_mb is always None — do NOT filter on it.
         """
         if not query or not query.strip():
             return [], [], [DownloadError.MUSIC_NOT_FOUND]
 
-        loop = asyncio.get_running_loop()
-        try:
-            raw = await loop.run_in_executor(
-                None, partial(_ytmusic.search, query.strip(), "songs", None, max_count)
-            )
-        except Exception as e:
-            print("YTMusic search failed, falling back to yt-dlp:", e)
-            return await self._search_ytdlp(query, max_count)
-
-        if not raw:
-            # Try yt-dlp before giving up
-            return await self._search_ytdlp(query, max_count)
-
-        results = []
-        for entry in raw:
-            vid = entry.get("videoId")
-            if not vid:
-                continue
-            dur_sec = entry.get("duration_seconds") or 0
-            if dur_sec > 700:
-                continue
-            m, s = divmod(int(dur_sec), 60)
-            results.append({
-                "title": entry.get("title", ""),
-                "id": vid,
-                "duration": f"{m}:{s:02d}" if dur_sec else None,
-                "filesize_mb": None,  # YTMusic never provides this; filter on duration only
-            })
-
-        if not results:
-            return await self._search_ytdlp(query, max_count)
-
-        return results, raw, []
-
-    async def _search_ytdlp(
-        self, query: str, max_count: int
-    ) -> tuple[List[Dict[str, Any]], Any, List[str]]:
         def _run():
-            opts = {"quiet": True, "skip_download": True, "extract_flat": True}
+            opts = {
+                "quiet": True,
+                "skip_download": True,
+                "extract_flat": True,
+                "noplaylist": True,
+            }
             try:
                 with YoutubeDL(opts) as ydl:
-                    data = ydl.extract_info(f"ytsearch{max_count}:{query}", download=False)
+                    data = ydl.extract_info(f"ytsearch{max_count}:{query.strip()}", download=False)
                 if not data:
                     return [], [], [DownloadError.MUSIC_NOT_FOUND]
                 results = []
@@ -146,7 +108,7 @@ class YouTubeSearcher:
                     })
                 return results, data.get("entries", []), []
             except Exception as ex:
-                print("ERROR _search_ytdlp:", ex)
+                print("ERROR search_music:", ex)
                 return [], [], [str(ex)]
 
         return await asyncio.to_thread(_run)
