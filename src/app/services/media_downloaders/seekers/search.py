@@ -2,37 +2,24 @@ import asyncio
 import time
 from typing import Dict, List, Any, Optional
 
-import aiohttp
+from shazamio import Shazam
 from yt_dlp import YoutubeDL
 
-from src.app.core.config import Settings
 from src.app.utils.enums.error import DownloadError
-
-LASTFM_API_URL = "http://ws.audioscrobbler.com/2.0/"
 
 _API_CACHE: Dict[str, tuple] = {}
 CACHE_TTL_SECONDS = 60 * 60
 
-# Negative cache: при ошибке API не бить повторно 60 сек
+# Negative cache: не бить повторно при даунтайме Shazam
 _NEGATIVE_CACHE: Dict[str, float] = {}
 NEGATIVE_CACHE_TTL = 60
 
 
 class YouTubeSearcher:
 
-    def __init__(self, session: Optional[aiohttp.ClientSession] = None):
-        self.settings = Settings()
-        self._session = session
-        self._owns_session = session is None
-
-    async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
-
-    async def close(self):
-        if self._owns_session and self._session and not self._session.closed:
-            await self._session.close()
+    def __init__(self, shazam: Optional[Shazam] = None):
+        # Переиспользуем инстанс — не плодим лишних HTTP-сессий
+        self.shazam = shazam or Shazam()
 
     async def get_media_info(self, video_url: str) -> Optional[Dict[str, Any]]:
         cache_key = f"media_info:{video_url}"
@@ -97,7 +84,6 @@ class YouTubeSearcher:
                         "duration": f"{int(duration) // 60}:{int(duration) % 60:02d}" if duration else None,
                         "filesize_mb": None,
                     })
-
                 return results, entries, errors
 
             except Exception as e:
@@ -119,69 +105,59 @@ class YouTubeSearcher:
     def cache_set(self, key: str, value):
         _API_CACHE[key] = (time.time(), value)
 
-    async def _fetch_top_tracks(
-        self,
-        method: str,
-        cache_key: str,
-        extra_params: Optional[Dict[str, Any]] = None,
-        limit: int = 50,
-    ) -> List[Dict[str, str]]:
+    def _check_negative(self, cache_key: str) -> bool:
+        ts = _NEGATIVE_CACHE.get(cache_key)
+        return ts is not None and time.time() - ts < NEGATIVE_CACHE_TTL
+
+    def _set_negative(self, cache_key: str) -> None:
+        _NEGATIVE_CACHE[cache_key] = time.time()
+
+    def _parse_tracks(self, raw: dict) -> List[Dict[str, str]]:
+        result: List[Dict[str, str]] = []
+        for track in raw.get("tracks", []):
+            title = track.get("title") or ""
+            subtitle = track.get("subtitle") or ""  # subtitle = артист в Shazam
+            result.append({"artist": subtitle, "title": title})
+        return result
+
+    async def get_top_music(self, limit: int = 50) -> List[Dict[str, str]]:
+        cache_key = f"shazam:world:{limit}"
         cached = self.cache_get(cache_key)
         if cached is not None:
             return cached
 
-        # Negative cache: если недавно была ошибка — не бьём API снова
-        neg_ts = _NEGATIVE_CACHE.get(cache_key)
-        if neg_ts and time.time() - neg_ts < NEGATIVE_CACHE_TTL:
-            raise RuntimeError("Last.fm temporarily unavailable (negative cache)")
-
-        params = {
-            "method": method,
-            "api_key": self.settings.lastfm_api_key,
-            "format": "json",
-            "limit": limit,
-        }
-        if extra_params:
-            params.update(extra_params)
+        if self._check_negative(cache_key):
+            raise RuntimeError("Shazam temporarily unavailable (negative cache)")
 
         try:
-            session = await self._get_session()
-            async with session.get(LASTFM_API_URL, params=params, timeout=15) as resp:
-                if resp.status != 200:
-                    _NEGATIVE_CACHE[cache_key] = time.time()
-                    raise RuntimeError(f"Last.fm HTTP {resp.status}")
-                data = await resp.json()
-        except RuntimeError:
-            raise
+            raw = await self.shazam.top_world_tracks(limit=limit)
         except Exception as e:
-            _NEGATIVE_CACHE[cache_key] = time.time()
-            print("ERROR _fetch_top_tracks:", e)
+            self._set_negative(cache_key)
+            print("ERROR get_top_music:", e)
             raise
 
-        tracks = data.get("tracks", {}).get("track", []) or []
-        result: List[Dict[str, str]] = []
-        for t in tracks:
-            artist_obj = t.get("artist")
-            artist = artist_obj.get("name") if isinstance(artist_obj, dict) else (artist_obj or "")
-            title = t.get("name") or ""
-            result.append({"artist": artist, "title": title})
-
+        result = self._parse_tracks(raw)
         self.cache_set(cache_key, result)
         return result
 
-    async def get_top_music(self, limit: int = 50) -> List[Dict[str, str]]:
-        cache_key = f"lastfm:global:{limit}"
-        return await self._fetch_top_tracks(
-            method="chart.gettoptracks",
-            cache_key=cache_key,
-            limit=limit,
-        )
+    async def get_top_by_region(self, region_code: str, limit: int = 50) -> List[Dict[str, str]]:
+        # region_code — ISO 3166-1 alpha-2, например "UZ", "RU", "GB"
+        key = region_code.upper()
+        cache_key = f"shazam:{key}:{limit}"
+        cached = self.cache_get(cache_key)
+        if cached is not None:
+            return cached
 
-    async def get_top_by_region(self, region: str, limit: int = 50) -> List[Dict[str, str]]:
-        cache_key = f"lastfm:{region}:{limit}"
-        return await self._fetch_top_tracks(
-            method="geo.gettoptracks",
-            cache_key=cache_key,
-            extra_params={"country": region},
-            limit=limit,
-        )
+        if self._check_negative(cache_key):
+            raise RuntimeError("Shazam temporarily unavailable (negative cache)")
+
+        try:
+            raw = await self.shazam.top_country_tracks(key, limit)
+        except Exception as e:
+            self._set_negative(cache_key)
+            print("ERROR get_top_by_region:", e)
+            raise
+
+        result = self._parse_tracks(raw)
+        self.cache_set(cache_key, result)
+        return result
