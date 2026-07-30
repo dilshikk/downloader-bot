@@ -7,6 +7,7 @@ from typing import Optional
 from shazamio import Shazam
 from yt_dlp import YoutubeDL
 
+from src.app.services.media_downloaders.seekers.search import is_topic_channel
 from src.app.services.media_downloaders.utils.files import get_audio_file_name
 
 # ── In-process prefetch store ──────────────────────────────────────────
@@ -33,12 +34,20 @@ def _cleanup_stale() -> None:
 
 
 def _is_drm_error(e: Exception) -> bool:
-    return "DRM" in str(e) or "drm" in str(e).lower()
+    msg = str(e).lower()
+    return "drm" in msg or "drm protected" in msg
 
 
-def _build_ydl_opts(output_path: str, player_client: list[str] | None = None) -> dict:
-    """yt-dlp options optimised for speed.
-    player_client: list of clients to try, default ['tv', 'ios'].
+def _build_ydl_opts(output_path: str) -> dict:
+    """
+    yt-dlp options optimised for speed and DRM avoidance.
+
+    Player client strategy:
+    - "web"         — standard web player, rarely DRM-gated for music
+    - "web_music"   — YouTube Music web player, also usually clean
+    - "android"     — mobile client, good fallback
+    We intentionally AVOID "tv" and "ios" which are the clients most
+    frequently used by YouTube Music Topic channels (DRM sources).
     """
     import shutil
     opts: dict = {
@@ -51,7 +60,8 @@ def _build_ydl_opts(output_path: str, player_client: list[str] | None = None) ->
         "concurrent_fragment_downloads": 5,
         "extractor_args": {
             "youtube": {
-                "player_client": player_client or ["tv", "ios"],
+                # web → web_music → android: all avoid the DRM-heavy tv/ios clients
+                "player_client": ["web", "android"],
             }
         },
         "postprocessors": [{
@@ -99,8 +109,9 @@ class MusicDownloader:
     async def download_music_from_youtube(
         self, video_id: str
     ) -> Optional[tuple[str, str]]:
-        """Try downloading by video_id.
-        If DRM-protected, returns None immediately so the caller can try next result.
+        """
+        Download audio for a single video_id.
+        Returns None immediately on DRM error so the caller can try the next result.
         """
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         music_output_path = f"./media/audios/{get_audio_file_name()}"
@@ -140,14 +151,15 @@ class MusicDownloader:
         self, query: str, skip_ids: list[str] | None = None
     ) -> Optional[tuple[str, str]]:
         """
-        DRM fallback: yt-dlp ytsearch flat → collect candidate IDs →
-        iterate and try each one, skipping DRM results and known bad IDs.
+        DRM fallback: flat ytsearch → filter out Topic channels and known bad IDs
+        → try each candidate until one downloads successfully.
         """
         skip_set = set(skip_ids or [])
         loop = asyncio.get_running_loop()
 
         # Step 1: flat search — fast, no download
-        def _flat_search() -> list[str]:
+        def _flat_search() -> list[tuple[str, str]]:
+            """Returns list of (video_id, uploader) tuples."""
             opts = {
                 "quiet": True,
                 "skip_download": True,
@@ -156,13 +168,23 @@ class MusicDownloader:
             }
             try:
                 with YoutubeDL(opts) as ydl:
-                    data = ydl.extract_info(f"ytsearch10:{query}", download=False)
+                    data = ydl.extract_info(f"ytsearch20:{query}", download=False)
                 if not data:
                     return []
-                return [
-                    e["id"] for e in data.get("entries", [])
-                    if e and e.get("id") and e["id"] not in skip_set
-                ]
+                results = []
+                for e in data.get("entries", []):
+                    if not e or not e.get("id"):
+                        continue
+                    vid = e["id"]
+                    if vid in skip_set:
+                        continue
+                    uploader = e.get("uploader") or e.get("channel") or ""
+                    # Skip Topic channels — they always produce DRM streams
+                    if is_topic_channel(uploader):
+                        print(f"fallback: skipping Topic channel {uploader!r} ({vid})")
+                        continue
+                    results.append((vid, uploader))
+                return results
             except Exception as ex:
                 print("ERROR flat search:", ex)
                 return []
@@ -171,12 +193,12 @@ class MusicDownloader:
         if not candidates:
             return None
 
-        # Step 2: try each candidate until one downloads without DRM
-        for vid in candidates:
+        # Step 2: try each candidate (non-DRM) until one succeeds
+        for vid, uploader in candidates:
             result = await self.download_music_from_youtube(vid)
             if result:
                 return result
-            # DRM or error — try next
+            # DRM or other error — try next
 
         return None
 
